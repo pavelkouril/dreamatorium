@@ -1,0 +1,31 @@
+namespace Dreamatorium.Input;
+
+public enum KeyCode
+{
+    Q = 12,
+    W = 13,
+    E = 14,
+    R = 15,
+    T = 16,
+    Y = 17,
+    U = 32,
+    I = 34,
+    O = 31,
+    P = 35,
+    A = 0,
+    S = 1,
+    D = 2,
+    F = 3,
+    G = 5,
+    H= 4,
+    J = 38,
+    K = 40,
+    L = 37,
+    Z = 6,
+    X = 7,
+    C = 8,
+    V = 9,
+    B = 11,
+    N = 45,
+    M = 46,
+}
