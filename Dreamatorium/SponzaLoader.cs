@@ -109,24 +109,7 @@ public unsafe class SponzaLoader
 
     private bool LoadTexture(MTLDevice device, string fullPath, out MTLTexture texture)
     {
-        Configuration.Default.PreferContiguousImageBuffers = true;
         using var image = Image.Load<Rgba32>(fullPath);
-
-        image.ProcessPixelRows(accessor =>
-        {
-            for (int y = 0; y < accessor.Height; y++)
-            {
-                Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
-                for (int x = 0; x < pixelRow.Length; x++)
-                {
-                    ref Rgba32 pixel = ref pixelRow[x];
-                    var bgr = pixel.Bgr;
-                    pixel.R = bgr.B;
-                    pixel.B = bgr.R;
-                }
-            }
-        });
-
         return ToMTLTexture(device, fullPath, image, out texture);
     }
 

@@ -49,7 +49,7 @@ public class Program
 
         var mtkView = new MTKView(inputManager, rect, device)
         {
-            ColorPixelFormat = MTLPixelFormat.BGRA8UnormsRGB,
+            ColorPixelFormat = MTLPixelFormat.RGBA8UnormsRGB,
             ClearColor = new MTLClearColor { red = 0.0, green = 0.0, blue = 0.0, alpha = 1.0 },
             FrameBufferOnly = false,
         };
