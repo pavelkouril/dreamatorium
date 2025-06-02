@@ -18,6 +18,26 @@ struct FrameData
     matrix_float4x4 projection_matrix;
     matrix_float4x4 inverse_view_matrix;
     matrix_float4x4 inverse_projection_matrix;
+    matrix_float4x4 view_projection_matrix;
+    matrix_float4x4 inverse_view_projection_matrix;
+    matrix_float4x4 view_rotation_matrix;
 };
+
+static float4 clipSpaceToViewSpace(float2 tex_coord, float depth, matrix_float4x4 inverse_projection_matrix)
+{
+    float z_ndc = depth * 2.0 - 1.0; // Convert [0,1] depth to [-1,1] NDC Z
+    float2 ndc = tex_coord * 2.0 - 1.0; // UV to NDC [-1,1] range
+    float4 clip = float4(ndc, z_ndc, 1.0);
+    float4 view_pos = inverse_projection_matrix * clip;
+    view_pos /= view_pos.w;
+    return view_pos;
+}
+
+static float4 clipSpaceToWorldSpace(float2 tex_coord, float depth, matrix_float4x4 inverse_projection_matrix, matrix_float4x4 inverse_view_matrix)
+{
+    float4 view_pos = clipSpaceToViewSpace(tex_coord, depth, inverse_projection_matrix);
+    float4 world_pos = inverse_view_matrix * view_pos;
+    return world_pos;
+}
 
 #pragma clang diagnostic pop

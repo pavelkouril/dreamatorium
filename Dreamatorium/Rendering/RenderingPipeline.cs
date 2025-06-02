@@ -47,14 +47,16 @@ public class RenderingPipeline
 
     private readonly GeometryPass _geometryPass;
     private readonly BlitPass _blitPass;
+    private readonly LightingPass _lightingPass;
+    private readonly SkyboxPass _skyboxPass;
 
     private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
 
-    private readonly Camera _camera;
-
     private MTLCommandQueue _queue;
 
-    public RenderingPipeline(MTLDevice device, List<Mesh> scene, Camera camera, ulong initialWidth, ulong initialHeight)
+    private readonly Camera _camera;
+
+    public RenderingPipeline(MTLDevice device, List<Mesh> scene, MTLTexture skyboxTexture, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
         _camera = camera;
@@ -65,6 +67,8 @@ public class RenderingPipeline
 
         _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
         _blitPass = new BlitPass(_queue);
+        _lightingPass = new LightingPass(_device, _queue, this);
+        _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);
 
         for (int i = 0; i < _frameData.Length; i++)
         {
@@ -110,15 +114,24 @@ public class RenderingPipeline
                 pFrameData->InverseProjectionMatrix = invProjectionMatrix;
             }
             pFrameData->ProjectionParameters = new Vector4(1, _camera.NearPlaneDistance, _camera.FarPlaneDistance, 1 / _camera.FarPlaneDistance);
+            pFrameData->ViewProjectionMatrix = _camera.ProjectionMatrix * _camera.WorldToCameraMatrix;
+            if (Matrix4x4.Invert(pFrameData->ViewProjectionMatrix, out Matrix4x4 invViewProjectionMatrix))
+            {
+                pFrameData->InverseViewProjectionMatrix = invViewProjectionMatrix;
+            }
+            pFrameData->ViewRotationMatrix = _camera.WorldToCameraMatrix;
+            pFrameData->ViewRotationMatrix.Translation = Vector3.Zero;
         }
 
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
 
-        // configure the blit
-        _blitPass.Destination = view.CurrentDrawable.Texture;
-        _blitPass.Source = GBufferA;
-        _renderPasses.Add(_blitPass);
+        _lightingPass.LightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
+        _renderPasses.Add(_lightingPass);
+
+        _renderPasses.Add(_skyboxPass);
+
+        var finalTexture = _lightingPass.OutputTexture;
 
         foreach (var pass in _renderPasses)
         {
@@ -128,7 +141,15 @@ public class RenderingPipeline
         // present the output
         var presentCommandBuffer = _queue.CommandBuffer();
         presentCommandBuffer.Label = StringHelper.NSString("Present Command Buffer");
-        presentCommandBuffer.PresentDrawable(view.CurrentDrawable);
+
+        var currentDrawable = view.CurrentDrawable;
+
+        var blitEncoder = presentCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
+        blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
+        blitEncoder.CopyFromTexture(finalTexture, currentDrawable.Texture);
+        blitEncoder.EndEncoding();
+
+        presentCommandBuffer.PresentDrawable(currentDrawable);
         presentCommandBuffer.Commit();
 
         if (cm.NativePtr != nint.Zero && cm.IsCapturing)
@@ -188,5 +209,8 @@ public class RenderingPipeline
         public Matrix4x4 ProjectionMatrix;
         public Matrix4x4 InverseViewMatrix;
         public Matrix4x4 InverseProjectionMatrix;
+        public Matrix4x4 ViewProjectionMatrix;
+        public Matrix4x4 InverseViewProjectionMatrix;
+        public Matrix4x4 ViewRotationMatrix;
     }
 }

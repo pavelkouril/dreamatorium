@@ -69,12 +69,17 @@ fragment GBufferData gbuffer_fragment(Vert2Frag in [[ stage_in ]], texture2d<flo
         discard_fragment();
     }
 
-    float3 base_color_sample = float4(albedoTex.sample(linearSampler, in.tex_coord.xy)).rgb;
-    float roughness = float4(roughnessMask.sample(linearSampler, in.tex_coord.xy)).r;
-    float metalness = float4(metalnessMask.sample(linearSampler, in.tex_coord.xy)).r;
+    float3 base_color_sample = float4(albedoTex.sample(linearSampler, in.tex_coord)).rgb;
+    float3 normalMapSample = float4(normalMap.sample(linearSampler, in.tex_coord)).rgb;
+    float roughness = float4(roughnessMask.sample(linearSampler, in.tex_coord)).r;
+    float metalness = float4(metalnessMask.sample(linearSampler, in.tex_coord)).r;
+
+    float3 normalTS = normalMapSample * 2.0 - 1.0;
+
+    float3 normal = normalTS.x * in.tangent + normalTS.y * in.bitangent + normalTS.z * in.normal;
 
     gBuffer.albedo_roughness = float4(base_color_sample, roughness);
-    gBuffer.normal_metalness = float4(in.normal, metalness);
+    gBuffer.normal_metalness = float4(normal, metalness);
     gBuffer.depth = in.view_space_position.z;
 
     return gBuffer;
