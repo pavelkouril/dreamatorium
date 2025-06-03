@@ -24,12 +24,12 @@ public class GeometryPass : IPass
     public MTLRenderPipelineState _gBufferGenerationPipelineState;
     public MTLDepthStencilState _gBufferGenerationDepthStencilState;
 
-    public GeometryPass(MTLDevice device, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
+    public GeometryPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
     {
         _pipeline = pipeline;
         _scene = scene;
         _camera = camera;
-        _queue = device.NewCommandQueue();
+        _queue = queue;
 
         _gBufferPassDescriptor = new MTLRenderPassDescriptor();
         var depthAttachment = new MTLRenderPassDepthAttachmentDescriptor();

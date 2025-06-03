@@ -1,21 +1,15 @@
 using Dreamatorium.Platforms.macOS;
 using SharpMetal.Metal;
-using SharpMetal.QuartzCore;
 
 namespace Dreamatorium.Rendering;
 
-public class BlitToScreen : IPass
+public class BlitPass(MTLCommandQueue queue) : IPass
 {
-    private MTLCommandQueue _queue;
+    private MTLCommandQueue _queue = queue;
 
-    public CAMetalDrawable Drawable;
+    public MTLTexture Destination;
 
-    public MTLTexture TextureToPresent;
-
-    public BlitToScreen(MTLDevice device)
-    {
-        _queue = device.NewCommandQueue();
-    }
+    public MTLTexture Source;
 
     public void Execute()
     {
@@ -25,11 +19,9 @@ public class BlitToScreen : IPass
         var desc = new MTLBlitPassDescriptor();
         var blitEncoder = commandBuffer.BlitCommandEncoder(desc);
         blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
-
-        blitEncoder.CopyFromTexture(TextureToPresent, Drawable.Texture);
+        blitEncoder.CopyFromTexture(Source, Destination);
         blitEncoder.EndEncoding();
 
-        commandBuffer.PresentDrawable(Drawable);
         commandBuffer.Commit();
     }
 }

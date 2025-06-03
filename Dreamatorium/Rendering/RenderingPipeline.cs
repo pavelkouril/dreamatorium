@@ -38,16 +38,20 @@ public class RenderingPipeline
     public MTLTexture DepthStencil { get; private set; }
 
     private readonly GeometryPass _geometryPass;
-    private readonly BlitToScreen _blitToScreen;
+    private readonly BlitPass _blitPass;
+
+    private MTLCommandQueue _queue;
 
     public RenderingPipeline(MTLDevice device, List<Mesh> scene, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
 
+        _queue = device.NewCommandQueue();
+
         CreateGBuffer(initialWidth, initialHeight);
 
-        _geometryPass = new GeometryPass(_device, this, scene, camera);
-        _blitToScreen = new BlitToScreen(_device);
+        _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
+        _blitPass = new BlitPass(_queue);
     }
 
     public void Render(in FrameInput frameInput, MTKView view)
@@ -73,15 +77,22 @@ public class RenderingPipeline
 
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
+
         // configure the blit
-        _blitToScreen.Drawable = view.CurrentDrawable;
-        _blitToScreen.TextureToPresent = GBufferA;
-        _renderPasses.Add(_blitToScreen);
+        _blitPass.Destination = view.CurrentDrawable.Texture;
+        _blitPass.Source = GBufferA;
+        _renderPasses.Add(_blitPass);
 
         foreach (var pass in _renderPasses)
         {
             pass.Execute();
         }
+
+        // present the output
+        var presentCommandBuffer = _queue.CommandBuffer();
+        presentCommandBuffer.Label = StringHelper.NSString("Present Command Buffer");
+        presentCommandBuffer.PresentDrawable(view.CurrentDrawable);
+        presentCommandBuffer.Commit();
 
         if (cm.NativePtr != nint.Zero && cm.IsCapturing)
         {
