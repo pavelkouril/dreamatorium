@@ -57,3 +57,7 @@ nunit-*.xml
 # IDE
 .idea
 .vs
+*.DotSettings.user
+
+# Project Data
+Dreamatorium/Data/*
