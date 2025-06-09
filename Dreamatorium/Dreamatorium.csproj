@@ -30,4 +30,7 @@
       <Exec Command="pwsh Shaders/Compile-Shaders.ps1 $(OutDir)" />
     </Target>
 
+    <ItemGroup>
+        <UpToDateCheckInput Include="Shaders/*.*" />
+    </ItemGroup>
 </Project>
