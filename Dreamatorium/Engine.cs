@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Runtime.Versioning;
+using Dreamatorium.Assets;
 using Dreamatorium.Input;
 using Dreamatorium.Rendering.Resources;
 using Dreamatorium.Scene;
@@ -28,8 +28,9 @@ public class Engine
 
     public Engine(MTLDevice device, InputManager inputManager, ulong initialWidth, ulong initialHeight)
     {
+        var assetLoader = new AssetLoader(device);
         var loader = new SponzaLoader();
-        _scene = loader.LoadFromFile("Data/sponza/sponza.obj", device);
+        _scene = loader.LoadFromFile(assetLoader, "Data/sponza/sponza.obj", device);
 
         _camera = new Camera(initialWidth / (float)initialHeight);
 

@@ -1,22 +1,14 @@
-using System.Buffers;
 using Assimp;
-using Dreamatorium.Platforms.macOS;
+using Dreamatorium.Assets;
 using SharpMetal.Metal;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Material = Dreamatorium.Rendering.Resources.Material;
 using Mesh = Dreamatorium.Rendering.Resources.Mesh;
 
 namespace Dreamatorium;
 
-public unsafe class SponzaLoader
+public class SponzaLoader
 {
-    private readonly Dictionary<string, MTLTexture> _textureLibrary = new();
-
-    private MTLTexture _whiteDummy;
-    private MTLTexture _blackDummy;
-
-    public List<Mesh> LoadFromFile(string filePath, MTLDevice device)
+    public List<Mesh> LoadFromFile(AssetLoader loader, string filePath, MTLDevice device)
     {
         var rv = new List<Mesh>();
 
@@ -34,8 +26,6 @@ public unsafe class SponzaLoader
             return rv;
         }
 
-        CreateBlanks(device);
-
         var materials = new Material[scene.MaterialCount];
 
         var directory = Path.GetDirectoryName(filePath);
@@ -50,11 +40,11 @@ public unsafe class SponzaLoader
 
             materials[i] = new Material(aiMaterial.Name, i)
             {
-                Albedo = AssignTextureOrFallback(device, directory, aiMaterial, TextureType.Diffuse, _blackDummy),
-                Opacity = AssignTextureOrFallback(device, directory, aiMaterial, TextureType.Opacity, _whiteDummy),
-                Normals = AssignTextureOrFallback(device, directory, aiMaterial, TextureType.Height, _blackDummy),
-                Roughness = AssignTextureOrFallback(device, directory, aiMaterial, TextureType.Shininess, _blackDummy),
-                Metalness = AssignTextureOrFallback(device, directory, aiMaterial, TextureType.Ambient, _blackDummy)
+                Albedo = AssignTextureOrFallback(loader, directory, aiMaterial, TextureType.Diffuse, loader.BlackDummy),
+                Opacity = AssignTextureOrFallback(loader, directory, aiMaterial, TextureType.Opacity, loader.WhiteDummy),
+                Normals = AssignTextureOrFallback(loader, directory, aiMaterial, TextureType.Height, loader.BlackDummy),
+                Roughness = AssignTextureOrFallback(loader, directory, aiMaterial, TextureType.Shininess, loader.BlackDummy),
+                Metalness = AssignTextureOrFallback(loader, directory, aiMaterial, TextureType.Ambient, loader.BlackDummy)
             };
         }
 
@@ -67,7 +57,7 @@ public unsafe class SponzaLoader
         return rv;
     }
 
-    private MTLTexture AssignTextureOrFallback(MTLDevice device, string directory, Assimp.Material aiMaterial, TextureType type, MTLTexture fallbackTexture)
+    private MTLTexture AssignTextureOrFallback(AssetLoader loader, string directory, Assimp.Material aiMaterial, TextureType type, MTLTexture fallbackTexture)
     {
         if (!aiMaterial.GetMaterialTexture(type, 0, out var textureSlot))
         {
@@ -75,72 +65,8 @@ public unsafe class SponzaLoader
         }
 
         string texturePath = textureSlot.FilePath;
+        var fullPath = Path.Join(directory, texturePath);
 
-        if (!_textureLibrary.TryGetValue(texturePath, out var texture))
-        {
-            var fullPath = Path.Join(directory, textureSlot.FilePath);
-            if (!LoadTexture(device, fullPath, type, out texture))
-            {
-                Console.Error.WriteLine($"Failed to load texture {fullPath}");
-            }
-
-            _textureLibrary[texturePath] = texture;
-        }
-
-        return texture;
-    }
-
-    private void CreateBlanks(MTLDevice device)
-    {
-        using Image<Rgba32> whiteImage = new Image<Rgba32>(1, 1);
-        whiteImage[0, 0] = Color.White;
-        if (!ToMTLTexture(device, "DummyWhite", whiteImage, TextureType.None, out _whiteDummy))
-        {
-            Console.Error.WriteLine("Can't create DummyWhite");
-        }
-
-        using Image<Rgba32> blackImage = new Image<Rgba32>(1, 1);
-        blackImage[0, 0] = Color.Black;
-        if (!ToMTLTexture(device, "DummyWhite", blackImage, TextureType.None, out _blackDummy))
-        {
-            Console.Error.WriteLine("Can't create DummyBlack");
-        }
-    }
-
-    private bool LoadTexture(MTLDevice device, string fullPath, TextureType type, out MTLTexture texture)
-    {
-        using var image = Image.Load<Rgba32>(fullPath);
-        return ToMTLTexture(device, fullPath, image, type, out texture);
-    }
-
-    private static bool ToMTLTexture(MTLDevice device, string fullPath, Image<Rgba32> image, TextureType type, out MTLTexture texture)
-    {
-        if (!image.DangerousTryGetSinglePixelMemory(out var memory))
-        {
-            texture = default;
-            return false;
-        }
-
-        var textureDescriptor = new MTLTextureDescriptor()
-        {
-            Width = (ulong)image.Width,
-            Height = (ulong)image.Height,
-            PixelFormat = type == TextureType.Diffuse ? MTLPixelFormat.RGBA8UnormsRGB : MTLPixelFormat.RGBA8Unorm,
-        };
-
-        texture = device.NewTexture(textureDescriptor);
-        var region = new MTLRegion()
-        {
-            origin = new MTLOrigin() { x = 0, y = 0, z = 0 },
-            size = new MTLSize() { width = textureDescriptor.Width, height = textureDescriptor.Height, depth = 1 },
-        };
-        ulong bytesPerRow = 4 * textureDescriptor.Width;
-
-        texture.Label = StringHelper.NSString(Path.GetFileNameWithoutExtension(fullPath));
-
-        using MemoryHandle pinHandle = memory.Pin();
-        texture.ReplaceRegion(region, 0, new nint(pinHandle.Pointer), bytesPerRow);
-
-        return true;
+        return loader.LoadTexture(fullPath, type);
     }
 }
