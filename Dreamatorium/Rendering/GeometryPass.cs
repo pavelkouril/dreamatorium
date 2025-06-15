@@ -10,14 +10,11 @@ namespace Dreamatorium.Rendering;
 
 public class GeometryPass : IPass
 {
-    private const int kMaxFramesInFlight = 3;
-
     private readonly RenderingPipeline _pipeline;
     private readonly List<Resources_Mesh> _scene;
     private readonly Camera _camera;
     private MTLCommandQueue _queue;
-    private int _frame;
-    private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
+    private MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
 
     private MTLRenderPassDescriptor _gBufferPassDescriptor;
 
@@ -94,8 +91,7 @@ public class GeometryPass : IPass
         renderEncoder.SetRenderPipelineState(_gBufferGenerationPipelineState);
         renderEncoder.SetDepthStencilState(_gBufferGenerationDepthStencilState);
 
-        _frame = (_frame + 1) % kMaxFramesInFlight;
-        var frameDataBuffer = _frameData[_frame];
+        var frameDataBuffer = _frameData[_pipeline.Frame];
 
         var t = Matrix4x4.CreateTranslation(0, 0, 0);
         var r = Matrix4x4.CreateFromYawPitchRoll(0, 0, 0);

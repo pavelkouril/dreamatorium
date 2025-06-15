@@ -9,11 +9,15 @@ namespace Dreamatorium.Rendering;
 
 public class RenderingPipeline
 {
+    public const int kMaxFramesInFlight = 3;
+
     public const MTLPixelFormat kGBufferAFormat = MTLPixelFormat.RGBA8UnormsRGB;
     public const MTLPixelFormat kGBufferBFormat = MTLPixelFormat.RGBA8Snorm;
     public const MTLPixelFormat kDepthFormat = MTLPixelFormat.R32Float;
 
     private MTLDevice _device;
+
+    public int Frame { get; private set; }
 
     private readonly List<IPass> _renderPasses = [];
 
@@ -74,6 +78,8 @@ public class RenderingPipeline
                 Console.WriteLine(StringHelper.String(error.LocalizedDescription));
             }
         }
+
+        Frame = (Frame + 1) % kMaxFramesInFlight;
 
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
