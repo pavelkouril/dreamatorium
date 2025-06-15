@@ -1,3 +1,5 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Dreamatorium.Input;
 using Dreamatorium.Rendering.Resources;
 using Dreamatorium.Scene;
@@ -16,8 +18,6 @@ public class RenderingPipeline
     public const MTLPixelFormat kDepthFormat = MTLPixelFormat.R32Float;
 
     private MTLDevice _device;
-
-    public int Frame { get; private set; }
 
     private readonly List<IPass> _renderPasses = [];
 
@@ -41,14 +41,23 @@ public class RenderingPipeline
     /// </summary>
     public MTLTexture DepthStencil { get; private set; }
 
+    public MTLBuffer CurrentFrameData => _frameData[Frame];
+
+    public int Frame { get; private set; }
+
     private readonly GeometryPass _geometryPass;
     private readonly BlitPass _blitPass;
+
+    private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
+
+    private readonly Camera _camera;
 
     private MTLCommandQueue _queue;
 
     public RenderingPipeline(MTLDevice device, List<Mesh> scene, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
+        _camera = camera;
 
         _queue = device.NewCommandQueue();
 
@@ -56,6 +65,11 @@ public class RenderingPipeline
 
         _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
         _blitPass = new BlitPass(_queue);
+
+        for (int i = 0; i < _frameData.Length; i++)
+        {
+            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeManaged);
+        }
     }
 
     public void Render(in FrameInput frameInput, MTKView view)
@@ -80,6 +94,28 @@ public class RenderingPipeline
         }
 
         Frame = (Frame + 1) % kMaxFramesInFlight;
+        var frameDataBuffer = _frameData[Frame];
+        unsafe
+        {
+            FrameData* pFrameData = (FrameData*)frameDataBuffer.Contents.ToPointer();
+            pFrameData->WorldSpaceCameraPosition = _camera.Position.AsVector4();
+            pFrameData->ViewMatrix = _camera.WorldToCameraMatrix;
+            pFrameData->ProjectionMatrix = _camera.ProjectionMatrix;
+            if (Matrix4x4.Invert(_camera.WorldToCameraMatrix, out Matrix4x4 invViewMatrix))
+            {
+                pFrameData->InverseViewMatrix = invViewMatrix;
+            }
+            if (Matrix4x4.Invert(_camera.ProjectionMatrix, out Matrix4x4 invProjectionMatrix))
+            {
+                pFrameData->InverseProjectionMatrix = invProjectionMatrix;
+            }
+            pFrameData->ProjectionParameters = new Vector4(1, _camera.NearPlaneDistance, _camera.FarPlaneDistance, 1 / _camera.FarPlaneDistance);
+            frameDataBuffer.DidModifyRange(new NSRange
+            {
+                location = 0,
+                length = (ulong)Marshal.SizeOf<FrameData>()
+            });
+        }
 
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
@@ -146,5 +182,16 @@ public class RenderingPipeline
         var depthStencil = _device.NewTexture(depthStencilDesc);
         depthStencil.Label = StringHelper.NSString("Depth/Stencil");
         DepthStencil = depthStencil;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct FrameData
+    {
+        public Vector4 ProjectionParameters;
+        public Vector4 WorldSpaceCameraPosition;
+        public Matrix4x4 ViewMatrix;
+        public Matrix4x4 ProjectionMatrix;
+        public Matrix4x4 InverseViewMatrix;
+        public Matrix4x4 InverseProjectionMatrix;
     }
 }
