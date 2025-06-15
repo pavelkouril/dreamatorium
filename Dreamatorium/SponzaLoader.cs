@@ -79,7 +79,7 @@ public unsafe class SponzaLoader
         if (!_textureLibrary.TryGetValue(texturePath, out var texture))
         {
             var fullPath = Path.Join(directory, textureSlot.FilePath);
-            if (!LoadTexture(device, fullPath, out texture))
+            if (!LoadTexture(device, fullPath, type, out texture))
             {
                 Console.Error.WriteLine($"Failed to load texture {fullPath}");
             }
@@ -94,26 +94,26 @@ public unsafe class SponzaLoader
     {
         using Image<Rgba32> whiteImage = new Image<Rgba32>(1, 1);
         whiteImage[0, 0] = Color.White;
-        if (!ToMTLTexture(device, "DummyWhite", whiteImage, out _whiteDummy))
+        if (!ToMTLTexture(device, "DummyWhite", whiteImage, TextureType.None, out _whiteDummy))
         {
             Console.Error.WriteLine("Can't create DummyWhite");
         }
 
         using Image<Rgba32> blackImage = new Image<Rgba32>(1, 1);
         blackImage[0, 0] = Color.Black;
-        if (!ToMTLTexture(device, "DummyWhite", blackImage, out _blackDummy))
+        if (!ToMTLTexture(device, "DummyWhite", blackImage, TextureType.None, out _blackDummy))
         {
             Console.Error.WriteLine("Can't create DummyBlack");
         }
     }
 
-    private bool LoadTexture(MTLDevice device, string fullPath, out MTLTexture texture)
+    private bool LoadTexture(MTLDevice device, string fullPath, TextureType type, out MTLTexture texture)
     {
         using var image = Image.Load<Rgba32>(fullPath);
-        return ToMTLTexture(device, fullPath, image, out texture);
+        return ToMTLTexture(device, fullPath, image, type, out texture);
     }
 
-    private static bool ToMTLTexture(MTLDevice device, string fullPath, Image<Rgba32> image, out MTLTexture texture)
+    private static bool ToMTLTexture(MTLDevice device, string fullPath, Image<Rgba32> image, TextureType type, out MTLTexture texture)
     {
         if (!image.DangerousTryGetSinglePixelMemory(out var memory))
         {
@@ -125,6 +125,7 @@ public unsafe class SponzaLoader
         {
             Width = (ulong)image.Width,
             Height = (ulong)image.Height,
+            PixelFormat = type == TextureType.Diffuse ? MTLPixelFormat.RGBA8UnormsRGB : MTLPixelFormat.RGBA8Unorm,
         };
 
         texture = device.NewTexture(textureDescriptor);
