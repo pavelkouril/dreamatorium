@@ -13,7 +13,7 @@ public class RenderingPipeline
 {
     public const int kMaxFramesInFlight = 3;
 
-    public const MTLPixelFormat kGBufferAFormat = MTLPixelFormat.RGBA8UnormsRGB;
+    public const MTLPixelFormat kGBufferAFormat = MTLPixelFormat.RGBA8Unorm;
     public const MTLPixelFormat kGBufferBFormat = MTLPixelFormat.RGBA8Snorm;
     public const MTLPixelFormat kDepthFormat = MTLPixelFormat.R32Float;
 
