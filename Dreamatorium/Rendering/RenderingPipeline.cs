@@ -37,9 +37,9 @@ public class RenderingPipeline
     public MTLTexture GBufferDepth { get; private set; }
 
     /// <summary>
-    /// Clip space Depth + Stencil Buffer
+    /// Clip space Depth
     /// </summary>
-    public MTLTexture DepthStencil { get; private set; }
+    public MTLTexture Depth { get; private set; }
 
     public MTLBuffer CurrentFrameData => _frameData[Frame];
 
@@ -172,11 +172,11 @@ public class RenderingPipeline
             TextureType = MTLTextureType.Type2D,
             Usage = MTLTextureUsage.ShaderRead | MTLTextureUsage.RenderTarget,
             StorageMode = MTLStorageMode.Shared,
-            PixelFormat = MTLPixelFormat.Depth32FloatStencil8,
+            PixelFormat = MTLPixelFormat.Depth32Float,
         };
         var depthStencil = _device.NewTexture(depthStencilDesc);
         depthStencil.Label = StringHelper.NSString("Depth/Stencil");
-        DepthStencil = depthStencil;
+        Depth = depthStencil;
     }
 
     [StructLayout(LayoutKind.Sequential)]

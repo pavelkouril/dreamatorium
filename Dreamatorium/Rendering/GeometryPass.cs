@@ -34,10 +34,6 @@ public class GeometryPass : IPass
             LoadAction = MTLLoadAction.Clear,
             StoreAction = MTLStoreAction.Store,
         };
-        _gBufferPassDescriptor.StencilAttachment = new MTLRenderPassStencilAttachmentDescriptor()
-        {
-            StoreAction = MTLStoreAction.Store,
-        };
 
         _gBufferGenerationPipelineState = makeRenderPipelineState(device, "GBuffer Generation Stage", descriptor =>
         {
@@ -46,8 +42,7 @@ public class GeometryPass : IPass
             descriptor.VertexFunction = ShaderLibrary.GetOrCreate(device).NewFunction(StringHelper.NSString("gbuffer_vertex"));
             descriptor.FragmentFunction = ShaderLibrary.GetOrCreate(device).NewFunction(StringHelper.NSString("gbuffer_fragment"));
             descriptor.VertexDescriptor = vertexDescriptor.Basic;
-            descriptor.DepthAttachmentPixelFormat = MTLPixelFormat.Depth32FloatStencil8;
-            descriptor.StencilAttachmentPixelFormat = MTLPixelFormat.Depth32FloatStencil8;
+            descriptor.DepthAttachmentPixelFormat = MTLPixelFormat.Depth32Float;
 
             SetPixelFormat(descriptor, 0, RenderingPipeline.kGBufferAFormat);
             SetPixelFormat(descriptor, 1, RenderingPipeline.kGBufferBFormat);
@@ -86,9 +81,7 @@ public class GeometryPass : IPass
         cA2.Texture = _pipeline.GBufferDepth;
 
         var dA = _gBufferPassDescriptor.DepthAttachment;
-        dA.Texture = _pipeline.DepthStencil;
-        var sA = _gBufferPassDescriptor.StencilAttachment;
-        sA.Texture = _pipeline.DepthStencil;
+        dA.Texture = _pipeline.Depth;
 
         var renderEncoder = commandBuffer.RenderCommandEncoder(_gBufferPassDescriptor);
         renderEncoder.Label = StringHelper.NSString("BasePass");
