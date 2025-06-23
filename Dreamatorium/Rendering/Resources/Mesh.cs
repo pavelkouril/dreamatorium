@@ -32,17 +32,17 @@ public class Mesh(string name, Material material)
         var indices = mesh.GetUnsignedIndices().ToList();
         var indexBufferSize = (ulong)(indices.Count * Marshal.SizeOf<uint>());
 
-        rv._vertexPositionsBuffer = device.NewBuffer(positionsDataSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._vertexPositionsBuffer = device.NewBuffer(positionsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexPositionsBuffer.Label = StringHelper.NSString($"{mesh.Name}/Positions");
-        rv._vertexNormalsBuffer = device.NewBuffer(normalsDataSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._vertexNormalsBuffer = device.NewBuffer(normalsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexNormalsBuffer.Label = StringHelper.NSString($"{mesh.Name}/Normals");
-        rv._vertexTangentsBuffer = device.NewBuffer(tangentsDataSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._vertexTangentsBuffer = device.NewBuffer(tangentsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexTangentsBuffer.Label = StringHelper.NSString($"{mesh.Name}/Tangents");
-        rv._vertexBitangentsBuffer = device.NewBuffer(bitangentsDataSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._vertexBitangentsBuffer = device.NewBuffer(bitangentsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexBitangentsBuffer.Label = StringHelper.NSString($"{mesh.Name}/Bitangents");
-        rv._vertexTextureCoordinatesBuffer = device.NewBuffer(textureCoordsDataSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._vertexTextureCoordinatesBuffer = device.NewBuffer(textureCoordsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexTextureCoordinatesBuffer.Label = StringHelper.NSString($"{mesh.Name}/TexCoords");
-        rv._indexBuffer = device.NewBuffer(indexBufferSize, MTLResourceOptions.ResourceStorageModeManaged);
+        rv._indexBuffer = device.NewBuffer(indexBufferSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._indexBuffer.Label = StringHelper.NSString($"{mesh.Name}/IndexBuffer");
 
         LoadData(mesh.Vertices, rv._vertexPositionsBuffer);
@@ -57,11 +57,6 @@ public class Mesh(string name, Material material)
         void LoadData<T>(List<T> data, MTLBuffer buffer)
         {
             data.CopyToBuffer(buffer);
-            buffer.DidModifyRange(new NSRange
-            {
-                location = 0,
-                length = buffer.Length,
-            });
         }
     }
 }

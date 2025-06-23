@@ -57,7 +57,7 @@ public class GeometryPass : IPass
 
         for (int i = 0; i < _frameData.Length; i++)
         {
-            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeManaged);
+            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
     }
 
@@ -109,11 +109,6 @@ public class GeometryPass : IPass
             pFrameData->NormalMatrixCol1 = new Vector4(modelMatrix.M11, modelMatrix.M21, modelMatrix.M31, 0);
             pFrameData->NormalMatrixCol2 = new Vector4(modelMatrix.M12, modelMatrix.M22, modelMatrix.M32, 0);
             pFrameData->NormalMatrixCol3 = new Vector4(modelMatrix.M13, modelMatrix.M23, modelMatrix.M33, 0);
-            frameDataBuffer.DidModifyRange(new NSRange
-            {
-                location = 0,
-                length = (ulong)Marshal.SizeOf<FrameData>()
-            });
         }
 
         renderEncoder.PushDebugGroup(StringHelper.NSString("Set Frame Data"));

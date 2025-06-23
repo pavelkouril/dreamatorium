@@ -71,6 +71,7 @@ public unsafe class AssetLoader
             Width = (ulong)image.Width,
             Height = (ulong)image.Height,
             PixelFormat = type == TextureType.Diffuse ? MTLPixelFormat.RGBA8UnormsRGB : MTLPixelFormat.RGBA8Unorm,
+            StorageMode = MTLStorageMode.Shared,
         };
 
         texture = _device.NewTexture(textureDescriptor);

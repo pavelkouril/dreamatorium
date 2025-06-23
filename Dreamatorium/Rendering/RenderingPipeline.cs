@@ -68,7 +68,7 @@ public class RenderingPipeline
 
         for (int i = 0; i < _frameData.Length; i++)
         {
-            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeManaged);
+            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
     }
 
@@ -110,11 +110,6 @@ public class RenderingPipeline
                 pFrameData->InverseProjectionMatrix = invProjectionMatrix;
             }
             pFrameData->ProjectionParameters = new Vector4(1, _camera.NearPlaneDistance, _camera.FarPlaneDistance, 1 / _camera.FarPlaneDistance);
-            frameDataBuffer.DidModifyRange(new NSRange
-            {
-                location = 0,
-                length = (ulong)Marshal.SizeOf<FrameData>()
-            });
         }
 
         _renderPasses.Clear();
