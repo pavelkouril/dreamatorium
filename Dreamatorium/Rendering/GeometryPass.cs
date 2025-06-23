@@ -29,10 +29,15 @@ public class GeometryPass : IPass
         _queue = queue;
 
         _gBufferPassDescriptor = new MTLRenderPassDescriptor();
-        var depthAttachment = new MTLRenderPassDepthAttachmentDescriptor();
-        depthAttachment.StoreAction = MTLStoreAction.Store;
-        var stencilAttachment = new MTLRenderPassStencilAttachmentDescriptor();
-        stencilAttachment.StoreAction = MTLStoreAction.Store;
+        _gBufferPassDescriptor.DepthAttachment = new MTLRenderPassDepthAttachmentDescriptor()
+        {
+            LoadAction = MTLLoadAction.Clear,
+            StoreAction = MTLStoreAction.Store,
+        };
+        _gBufferPassDescriptor.StencilAttachment = new MTLRenderPassStencilAttachmentDescriptor()
+        {
+            StoreAction = MTLStoreAction.Store,
+        };
 
         _gBufferGenerationPipelineState = makeRenderPipelineState(device, "GBuffer Generation Stage", descriptor =>
         {
