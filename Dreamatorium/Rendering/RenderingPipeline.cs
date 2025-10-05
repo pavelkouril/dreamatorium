@@ -49,6 +49,7 @@ public class RenderingPipeline
     private readonly BlitPass _blitPass;
     private readonly LightingPass _lightingPass;
     private readonly SkyboxPass _skyboxPass;
+    private readonly ShadowPass _shadowPass;
 
     private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
 
@@ -128,6 +129,8 @@ public class RenderingPipeline
 
         _lightingPass.LightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
         _renderPasses.Add(_lightingPass);
+
+        _renderPasses.Add(_shadowPass);
 
         _renderPasses.Add(_skyboxPass);
 
