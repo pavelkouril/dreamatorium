@@ -50,6 +50,7 @@ public class RenderingPipeline
     private readonly LightingPass _lightingPass;
     private readonly SkyboxPass _skyboxPass;
     private readonly ShadowPass _shadowPass;
+    private readonly Vector3 _mainLightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
 
     private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
 
@@ -68,7 +69,8 @@ public class RenderingPipeline
 
         _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
         _blitPass = new BlitPass(_queue);
-        _lightingPass = new LightingPass(_device, _queue, this);
+        _shadowPass = new ShadowPass(_device, _queue, this, scene);
+        _lightingPass = new LightingPass(_device, _queue, this, _shadowPass);
         _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);
 
         for (int i = 0; i < _frameData.Length; i++)
@@ -122,15 +124,19 @@ public class RenderingPipeline
             }
             pFrameData->ViewRotationMatrix = _camera.WorldToCameraMatrix;
             pFrameData->ViewRotationMatrix.Translation = Vector3.Zero;
+            BuildDirectionalLightMatrices(_mainLightDirection, out Matrix4x4 lightViewMatrix, out Matrix4x4 lightProjectionMatrix);
+            pFrameData->LightViewMatrix = lightViewMatrix;
+            pFrameData->LightProjectionMatrix = lightProjectionMatrix;
+            pFrameData->LightViewProjectionMatrix = lightProjectionMatrix * lightViewMatrix;
         }
 
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
 
-        _lightingPass.LightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
-        _renderPasses.Add(_lightingPass);
+        _lightingPass.LightDirection = _mainLightDirection;
 
         _renderPasses.Add(_shadowPass);
+        _renderPasses.Add(_lightingPass);
 
         _renderPasses.Add(_skyboxPass);
 
@@ -203,6 +209,23 @@ public class RenderingPipeline
         Depth = depthStencil;
     }
 
+    private static void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)
+    {
+        // World-anchored directional light setup to keep shadows stable when camera moves.
+        float distanceFromCenter = 120.0f;
+        float orthoWidth = 240.0f;
+        float orthoHeight = 240.0f;
+        float nearPlane = 1.0f;
+        float farPlane = 600.0f;
+
+        Vector3 target = Vector3.Zero;
+        Vector3 lightPos = target + lightDirection * distanceFromCenter;
+        Vector3 up = MathF.Abs(Vector3.Dot(Vector3.UnitY, lightDirection)) > 0.99f ? Vector3.UnitZ : Vector3.UnitY;
+
+        lightView = Matrix4x4.CreateLookAtLeftHanded(lightPos, target, up);
+        lightProjection = Matrix4x4.CreateOrthographicLeftHanded(orthoWidth, orthoHeight, nearPlane, farPlane);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct FrameData
     {
@@ -215,5 +238,8 @@ public class RenderingPipeline
         public Matrix4x4 ViewProjectionMatrix;
         public Matrix4x4 InverseViewProjectionMatrix;
         public Matrix4x4 ViewRotationMatrix;
+        public Matrix4x4 LightViewMatrix;
+        public Matrix4x4 LightProjectionMatrix;
+        public Matrix4x4 LightViewProjectionMatrix;
     }
 }

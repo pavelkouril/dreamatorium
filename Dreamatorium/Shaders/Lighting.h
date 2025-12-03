@@ -47,7 +47,7 @@ static float3 fresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
 
-static float3 calculateLighting(float3 albedo, float metallic, float roughness, float3 positionWS, float3 N, float3 V, constant LightingData* lightingData, uint lightCount)
+static float3 calculateLighting(float3 albedo, float metallic, float roughness, float3 positionWS, float3 N, float3 V, constant LightingData* lightingData, uint lightCount, float directionalShadow)
 {
     float3 Lo = float3(0.0);
 
@@ -86,7 +86,8 @@ static float3 calculateLighting(float3 albedo, float metallic, float roughness, 
         float3 specular = NDF * G * F / (4.0 * max(dot(N, V), 0.0) * NdotL + 1e-5);
 
         float3 radiance = lightingData[i].colorIntensity.rgb * lightingData[i].colorIntensity.a * attenuation;
-        Lo += (kD * diffuse + specular) * radiance * NdotL;
+        float shadowFactor = (lightingData[i].type == 0) ? directionalShadow : 1.0;
+        Lo += (kD * diffuse + specular) * radiance * NdotL * shadowFactor;
     }
 
     float3 ambient = float3(0.03) * albedo;

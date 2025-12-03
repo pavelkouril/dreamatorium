@@ -21,12 +21,15 @@ struct FrameData
     matrix_float4x4 view_projection_matrix;
     matrix_float4x4 inverse_view_projection_matrix;
     matrix_float4x4 view_rotation_matrix;
+    matrix_float4x4 light_view_matrix;
+    matrix_float4x4 light_projection_matrix;
+    matrix_float4x4 light_view_projection_matrix;
 };
 
 static float4 clipSpaceToViewSpace(float2 tex_coord, float depth, matrix_float4x4 inverse_projection_matrix)
 {
-    float z_ndc = depth * 2.0 - 1.0; // Convert [0,1] depth to [-1,1] NDC Z
-    float2 ndc = tex_coord * 2.0 - 1.0; // UV to NDC [-1,1] range
+    float z_ndc = depth;
+    float2 ndc = float2(tex_coord.x * 2.0 - 1.0, 1.0 - tex_coord.y * 2.0);
     float4 clip = float4(ndc, z_ndc, 1.0);
     float4 view_pos = inverse_projection_matrix * clip;
     view_pos /= view_pos.w;

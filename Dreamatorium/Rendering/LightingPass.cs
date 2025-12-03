@@ -23,6 +23,7 @@ public class LightingPass : IPass
     private MTLDevice _device;
 
     private readonly RenderingPipeline _pipeline;
+    private readonly ShadowPass _shadowPass;
 
     private MTLCommandQueue _queue;
 
@@ -40,10 +41,11 @@ public class LightingPass : IPass
 
     public Vector3 LightDirection { get; set; }
 
-    public LightingPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline)
+    public LightingPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, ShadowPass shadowPass)
     {
         _device = device;
         _pipeline = pipeline;
+        _shadowPass = shadowPass;
         _queue = queue;
 
         var outputTextureDescriptor = new MTLTextureDescriptor()
@@ -148,7 +150,8 @@ public class LightingPass : IPass
     {
         renderEncoder.SetFragmentTexture(_pipeline.GBufferA, 0);
         renderEncoder.SetFragmentTexture(_pipeline.GBufferB, 1);
-        renderEncoder.SetFragmentTexture(_pipeline.GBufferDepth, 2);
+        renderEncoder.SetFragmentTexture(_pipeline.Depth, 2);
+        renderEncoder.SetFragmentTexture(_shadowPass.ShadowMap, 3);
     }
 
     protected unsafe void FillData(MTLBuffer frameDataBuffer)
