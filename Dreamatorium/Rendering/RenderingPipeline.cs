@@ -83,9 +83,9 @@ public class RenderingPipeline
         MTLCaptureManager cm = default;
         if (hasRequestedFrameCapture)
         {
-            cm = MTLCaptureManager.SharedCaptureManager();
+            cm = MTLCaptureManager.SharedCaptureManager;
             var desc = new MTLCaptureDescriptor();
-            desc.CaptureObject = _device;
+            desc.CaptureObject = new NSObject(_device);
             string captureFileName = $"capture_{frameInput.Frame}.gputrace";
             Console.WriteLine($"Capturing trace to {captureFileName}");
             desc.OutputURL = NSURL.FileURLWithPath(StringHelper.NSString(captureFileName));

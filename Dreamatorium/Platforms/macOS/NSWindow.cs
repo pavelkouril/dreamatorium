@@ -36,7 +36,7 @@ public readonly struct NSWindow
         set => ObjectiveC.objc_msgSend(NativePtr, "setTitle:", value);
     }
 
-    public float BackingScaleFactor => (float)ObjectiveCRuntime.double_objc_msgSend(NativePtr, new Selector("backingScaleFactor"));
+    public float BackingScaleFactor => (float)ObjectiveC.double_objc_msgSend(NativePtr, new Selector("backingScaleFactor"));
 
     public void SetContentView(nint ptr)
     {

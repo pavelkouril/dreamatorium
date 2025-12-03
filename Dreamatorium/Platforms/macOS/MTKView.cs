@@ -50,12 +50,12 @@ public readonly struct MTKView
 
     public MTLClearColor ClearColor
     {
-        set => ObjectiveCRuntime.objc_msgSend(NativePtr, new Selector("setClearColor:"), value);
+        set => ObjectiveC.objc_msgSend(NativePtr, new Selector("setClearColor:"), value);
     }
 
     public bool FrameBufferOnly
     {
-        set => ObjectiveCRuntime.objc_msgSend(NativePtr, new Selector("setFramebufferOnly:"), (bool)value);
+        set => ObjectiveC.objc_msgSend(NativePtr, new Selector("setFramebufferOnly:"), (bool)value);
     }
 
     public MTKViewDelegate Delegate
