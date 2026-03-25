@@ -17,7 +17,7 @@ public class SponzaLoader
             return rv;
         }
 
-        AssimpContext importer = new AssimpContext();
+        using AssimpContext importer = new AssimpContext();
 
         Assimp.Scene scene = importer.ImportFile(filePath, PostProcessSteps.CalculateTangentSpace | PostProcessSteps.Triangulate | PostProcessSteps.GenerateNormals | PostProcessSteps.JoinIdenticalVertices | PostProcessSteps.ImproveCacheLocality | PostProcessSteps.FlipUVs);
 
