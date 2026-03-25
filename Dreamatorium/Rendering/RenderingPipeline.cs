@@ -81,6 +81,17 @@ public class RenderingPipeline
 
     public void Render(in FrameInput frameInput, MTKView view)
     {
+        var currentDrawable = view.CurrentDrawable;
+        if (currentDrawable.NativePtr == nint.Zero)
+        {
+            return;
+        }
+
+        if (currentDrawable.Texture.Width != GBufferA.Width || currentDrawable.Texture.Height != GBufferA.Height)
+        {
+            Resize(currentDrawable.Texture.Width, currentDrawable.Texture.Height);
+        }
+
         bool hasRequestedFrameCapture = frameInput.HasKeyEvent(KeyCode.P, KeyEventType.KeyDown) && !frameInput.HasKeyEvent(KeyCode.P, KeyEventType.IsRepeat);
         MTLCaptureManager cm = default;
         if (hasRequestedFrameCapture)
@@ -151,8 +162,6 @@ public class RenderingPipeline
         var presentCommandBuffer = _queue.CommandBuffer();
         presentCommandBuffer.Label = StringHelper.NSString("Present Command Buffer");
 
-        var currentDrawable = view.CurrentDrawable;
-
         var blitEncoder = presentCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
         blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
         blitEncoder.CopyFromTexture(finalTexture, currentDrawable.Texture);
@@ -207,6 +216,24 @@ public class RenderingPipeline
         var depthStencil = _device.NewTexture(depthStencilDesc);
         depthStencil.Label = StringHelper.NSString("Depth/Stencil");
         Depth = depthStencil;
+    }
+
+    public void Resize(ulong width, ulong height)
+    {
+        if (width == 0 || height == 0)
+        {
+            return;
+        }
+
+        _camera.AspectRatio = width / (float)height;
+
+        if (GBufferA.Width == width && GBufferA.Height == height)
+        {
+            return;
+        }
+
+        CreateGBuffer(width, height);
+        _lightingPass.Resize(width, height);
     }
 
     private static void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)

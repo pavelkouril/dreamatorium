@@ -11,6 +11,7 @@ public class SkyboxPass : IPass
     private MTLCommandQueue _queue;
 
     private readonly RenderingPipeline _pipeline;
+    private readonly LightingPass _lightingPass;
 
     private MTLTexture _skyboxTexture;
 
@@ -24,12 +25,13 @@ public class SkyboxPass : IPass
         _device = device;
         _queue = queue;
         _pipeline = pipeline;
+        _lightingPass = lightingPass;
         _skyboxTexture = skyboxTexture;
 
         _skyboxDepthStencilState = _device.NewDepthStencilState(new MTLDepthStencilDescriptor()
         {
             DepthCompareFunction = MTLCompareFunction.LessEqual,
-            DepthWriteEnabled = false,
+            IsDepthWriteEnabled = false,
         });
 
         _skyboxPipelineState = MakeRenderPipelineState("Skybox", descriptor =>
@@ -48,6 +50,8 @@ public class SkyboxPass : IPass
         var c0 = _skyboxPassDescriptor.ColorAttachments.Object(0);
         c0.Texture = lightingPass.OutputTexture;
         c0.LoadAction = MTLLoadAction.Load;
+        c0.StoreAction = MTLStoreAction.Store;
+        _skyboxPassDescriptor.ColorAttachments.SetObject(c0, 0);
 
         var dA = _skyboxPassDescriptor.DepthAttachment;
         dA.LoadAction = MTLLoadAction.Load;
@@ -57,6 +61,14 @@ public class SkyboxPass : IPass
 
     public void Execute()
     {
+        var c0 = _skyboxPassDescriptor.ColorAttachments.Object(0);
+        c0.Texture = _lightingPass.OutputTexture;
+        _skyboxPassDescriptor.ColorAttachments.SetObject(c0, 0);
+
+        var dA = _skyboxPassDescriptor.DepthAttachment;
+        dA.Texture = _pipeline.Depth;
+        _skyboxPassDescriptor.DepthAttachment = dA;
+
         var commandBuffer = _queue.CommandBuffer();
 
         var renderEncoder = commandBuffer.RenderCommandEncoder(_skyboxPassDescriptor);

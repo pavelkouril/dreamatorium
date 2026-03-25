@@ -41,7 +41,7 @@ public class Program
     private static void OnApplicationDidFinishLaunching(NSNotification notification)
     {
         var rect = new NSRect(kPositionX, kPositionY, kWidth, kHeight);
-        var window = new NSWindow(rect, (ulong)(NSStyleMask.Titled | NSStyleMask.Closable | NSStyleMask.Miniaturizable));
+        var window = new NSWindow(rect, (ulong)(NSStyleMask.Titled | NSStyleMask.Closable | NSStyleMask.Miniaturizable | NSStyleMask.Resizable));
 
         var device = MTLDevice.CreateSystemDefaultDevice();
 

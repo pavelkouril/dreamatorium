@@ -132,6 +132,38 @@ public class LightingPass : IPass
         commandBuffer.Commit();
     }
 
+    public void Resize(ulong width, ulong height)
+    {
+        if (width == 0 || height == 0)
+        {
+            return;
+        }
+
+        if (OutputTexture.Width == width && OutputTexture.Height == height)
+        {
+            return;
+        }
+
+        var outputTextureDescriptor = new MTLTextureDescriptor()
+        {
+            Width = width,
+            Height = height,
+            MipmapLevelCount = 1,
+            TextureType = MTLTextureType.Type2D,
+            Usage = MTLTextureUsage.ShaderRead | MTLTextureUsage.RenderTarget,
+            StorageMode = MTLStorageMode.Shared,
+            PixelFormat = MTLPixelFormat.RGBA8Unorm,
+        };
+
+        var outputTexture = _device.NewTexture(outputTextureDescriptor);
+        outputTexture.Label = StringHelper.NSString("LightningPass.Output");
+        OutputTexture = outputTexture;
+
+        var c0 = _renderPassDescriptor.ColorAttachments.Object(0);
+        c0.Texture = OutputTexture;
+        _renderPassDescriptor.ColorAttachments.SetObject(c0, 0);
+    }
+
     private MTLRenderPipelineState makeRenderPipelineState(string label, Action<MTLRenderPipelineDescriptor> block)
     {
         var descriptor = new MTLRenderPipelineDescriptor();
