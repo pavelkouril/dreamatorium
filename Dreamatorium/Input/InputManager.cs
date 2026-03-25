@@ -21,6 +21,10 @@ public class InputManager
         lock (_lock)
         {
             byte[] keys = _buffers[_currentIndex];
+            if (keyCode >= keys.Length)
+            {
+                return;
+            }
             keys[keyCode] |= (byte)type;
             if (isRepeat)
             {
