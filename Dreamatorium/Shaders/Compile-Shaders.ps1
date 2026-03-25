@@ -22,6 +22,6 @@ foreach ($Shader in $Shaders)
 $AirFiles = Get-ChildItem -Path $OutputDirectory -Filter "*.air" | Select-Object -ExpandProperty FullName
 
 $metallibArgs = @("-sdk", "macosx", "metallib", "-o", "${OutputDirectory}/Output.metallib") + $AirFiles
-Start-Process -FilePath "xcrun" -ArgumentList $metallibArgs
+Start-Process -FilePath "xcrun" -ArgumentList $metallibArgs -Wait
 
 Pop-Location
