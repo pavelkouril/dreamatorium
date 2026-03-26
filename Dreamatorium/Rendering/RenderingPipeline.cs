@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using Dreamatorium.Input;
 using Dreamatorium.Rendering.Resources;
 using Dreamatorium.Scene;
@@ -19,15 +20,19 @@ public class RenderingPipeline
     private MTLDevice _device;
 
     private readonly List<IPass> _renderPasses = [];
+    private readonly Dictionary<string, Func<MTLTexture>> _bufferVisualizationResolvers = new();
+    private readonly List<(string Key, string Label)> _bufferVisualizationOptions = [];
 
     /// <summary>
     /// GBuffer Texture containing BaseColor + Roughness
     /// </summary>
+    [BufferVisualization]
     public MTLTexture GBufferA { get; private set; }
 
     /// <summary>
     /// GBuffer Texture containing WorldSpace Normals + Metalness
     /// </summary>
+    [BufferVisualization]
     public MTLTexture GBufferB { get; private set; }
 
     /// <summary>
@@ -58,6 +63,8 @@ public class RenderingPipeline
 
     public MTLTexture FinalTexture => _lightingPass.OutputTexture;
 
+    public IReadOnlyList<(string Key, string Label)> BufferVisualizationOptions => _bufferVisualizationOptions;
+
     public RenderingPipeline(MTLDevice device, List<Mesh> scene, MTLTexture skyboxTexture, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
@@ -71,6 +78,7 @@ public class RenderingPipeline
         _shadowPass = new ShadowPass(_device, _queue, this, scene);
         _lightingPass = new LightingPass(_device, _queue, this, _shadowPass);
         _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);
+        ConfigureBufferVisualizationOptions();
 
         for (int i = 0; i < _frameData.Length; i++)
         {
@@ -136,6 +144,20 @@ public class RenderingPipeline
         var commandBuffer = _queue.CommandBuffer();
         commandBuffer.Label = StringHelper.NSString(label);
         return commandBuffer;
+    }
+
+    public MTLTexture ResolveBufferVisualizationTexture(string key)
+    {
+        if (_bufferVisualizationResolvers.TryGetValue(key, out Func<MTLTexture>? resolveTexture))
+        {
+            MTLTexture selectedTexture = resolveTexture();
+            if (selectedTexture.NativePtr != nint.Zero)
+            {
+                return selectedTexture;
+            }
+        }
+
+        return FinalTexture;
     }
 
     private void CreateGBuffer(ulong width, ulong height)
@@ -213,6 +235,59 @@ public class RenderingPipeline
 
         lightView = Matrix4x4.CreateLookAtLeftHanded(lightPos, target, up);
         lightProjection = Matrix4x4.CreateOrthographicLeftHanded(orthoWidth, orthoHeight, nearPlane, farPlane);
+    }
+
+    private void ConfigureBufferVisualizationOptions()
+    {
+        _bufferVisualizationResolvers.Clear();
+        _bufferVisualizationOptions.Clear();
+
+        RegisterBufferVisualizations("Pipeline", this);
+        RegisterBufferVisualizations(nameof(GeometryPass), _geometryPass);
+        RegisterBufferVisualizations(nameof(ShadowPass), _shadowPass);
+        RegisterBufferVisualizations(nameof(LightingPass), _lightingPass);
+        RegisterBufferVisualizations(nameof(SkyboxPass), _skyboxPass);
+        _bufferVisualizationOptions.Sort(static (a, b) => string.Compare(a.Label, b.Label, StringComparison.Ordinal));
+    }
+
+    private void RegisterBufferVisualizations(string ownerName, object owner)
+    {
+        BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        Type ownerType = owner.GetType();
+
+        foreach (PropertyInfo property in ownerType.GetProperties(flags))
+        {
+            BufferVisualizationAttribute? visualizationAttribute = property.GetCustomAttribute<BufferVisualizationAttribute>();
+            if (property.PropertyType != typeof(MTLTexture) || visualizationAttribute is null)
+            {
+                continue;
+            }
+
+            MethodInfo? getter = property.GetGetMethod(nonPublic: true);
+            if (getter is null)
+            {
+                continue;
+            }
+
+            string key = $"{ownerName}:property:{property.Name}";
+            string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? property.Name : visualizationAttribute.DisplayName;
+            _bufferVisualizationResolvers[key] = () => (MTLTexture)getter.Invoke(owner, null)!;
+            _bufferVisualizationOptions.Add((key, label));
+        }
+
+        foreach (FieldInfo field in ownerType.GetFields(flags))
+        {
+            BufferVisualizationAttribute? visualizationAttribute = field.GetCustomAttribute<BufferVisualizationAttribute>();
+            if (field.FieldType != typeof(MTLTexture) || visualizationAttribute is null)
+            {
+                continue;
+            }
+
+            string key = $"{ownerName}:field:{field.Name}";
+            string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? field.Name : visualizationAttribute.DisplayName;
+            _bufferVisualizationResolvers[key] = () => (MTLTexture)field.GetValue(owner)!;
+            _bufferVisualizationOptions.Add((key, label));
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

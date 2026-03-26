@@ -8,7 +8,7 @@ using Resources_Mesh = Dreamatorium.Rendering.Resources.Mesh;
 
 namespace Dreamatorium.Rendering;
 
-public class GeometryPass : IPass
+public class GeometryPass : IPass<GeometryPassSettings>
 {
     private readonly RenderingPipeline _pipeline;
     private readonly List<Resources_Mesh> _scene;
@@ -20,6 +20,8 @@ public class GeometryPass : IPass
 
     public MTLRenderPipelineState _gBufferGenerationPipelineState;
     public MTLDepthStencilState _gBufferGenerationDepthStencilState;
+
+    public GeometryPassSettings Settings { get; } = new();
 
     public GeometryPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
     {

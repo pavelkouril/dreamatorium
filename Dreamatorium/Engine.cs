@@ -42,6 +42,7 @@ public class Engine
 
         _pipeline = new RenderingPipeline(device, _scene, skyboxTexture, _camera, initialWidth, initialHeight);
         _appUi = new AppUi();
+        _appUi.SetBufferVisualizationOptions(_pipeline.BufferVisualizationOptions);
         _imGuiRenderPass = new ImGuiRenderPass(device, _appUi);
         _frameCaptureController = new FrameCaptureController(device);
 
@@ -77,7 +78,12 @@ public class Engine
         var frameCommandBuffer = _pipeline.CreateFrameCommandBuffer("Frame Command Buffer");
         var blitEncoder = frameCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
         blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
-        blitEncoder.CopyFromTexture(_pipeline.FinalTexture, currentDrawable.Texture);
+        var textureToDisplay = _pipeline.FinalTexture;
+        if (!string.IsNullOrWhiteSpace(_appUi.SelectedBufferVisualizationKey))
+        {
+            textureToDisplay = _pipeline.ResolveBufferVisualizationTexture(_appUi.SelectedBufferVisualizationKey);
+        }
+        blitEncoder.CopyFromTexture(textureToDisplay, currentDrawable.Texture);
         blitEncoder.EndEncoding();
 
         _imGuiRenderPass.Render(frameInput, frameCommandBuffer, currentDrawable.Texture);

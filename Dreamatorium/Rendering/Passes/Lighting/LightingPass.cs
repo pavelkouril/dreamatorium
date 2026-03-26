@@ -18,7 +18,7 @@ public struct LightingData
     public uint _pad2;
 }
 
-public class LightingPass : IPass
+public class LightingPass : IPass<LightingPassSettings>
 {
     private MTLDevice _device;
 
@@ -38,6 +38,8 @@ public class LightingPass : IPass
     private MTLRenderPassDescriptor _renderPassDescriptor;
 
     public Vector3 LightDirection { get; set; }
+
+    public LightingPassSettings Settings { get; } = new();
 
     public LightingPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, ShadowPass shadowPass)
     {
