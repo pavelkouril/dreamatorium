@@ -2,6 +2,14 @@ namespace Dreamatorium.Input;
 
 public enum KeyCode
 {
+    LeftCommand = 55,
+    RightCommand = 54,
+    LeftShift = 56,
+    RightShift = 60,
+    LeftAlt = 58,
+    RightAlt = 61,
+    LeftControl = 59,
+    RightControl = 62,
     Q = 12,
     W = 13,
     E = 14,

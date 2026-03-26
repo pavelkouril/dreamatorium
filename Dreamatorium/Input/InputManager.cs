@@ -57,6 +57,30 @@ public class InputManager
         }
     }
 
+    public void RecordModifierFlagsChanged(ushort keyCode)
+    {
+        lock (_lock)
+        {
+            SnapshotBuffer writeBuffer = _snapshotBuffers[_writeIndex];
+            if (keyCode >= writeBuffer.KeyEventFlags.Length)
+            {
+                return;
+            }
+
+            bool isDown = !writeBuffer.KeyDownState[keyCode];
+            if (isDown)
+            {
+                writeBuffer.KeyEventFlags[keyCode] |= (byte)KeyEventType.KeyDown;
+                writeBuffer.KeyDownState[keyCode] = true;
+            }
+            else
+            {
+                writeBuffer.KeyEventFlags[keyCode] |= (byte)KeyEventType.KeyUp;
+                writeBuffer.KeyDownState[keyCode] = false;
+            }
+        }
+    }
+
     public void RecordMouseMove(float x, float y)
     {
         lock (_lock)

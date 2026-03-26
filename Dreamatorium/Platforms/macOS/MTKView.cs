@@ -37,6 +37,13 @@ public readonly struct MTKView
         });
         InteropKeepAliveRegistry.Add(_onKeyUp);
 
+        var _onFlagsChanged = (ObjCMessageNintNintNintDelegate)((_, _, @event) =>
+        {
+            var e = new NSEvent(@event);
+            inputManager.RecordModifierFlagsChanged(e.KeyCode);
+        });
+        InteropKeepAliveRegistry.Add(_onFlagsChanged);
+
         var _onMouseDown = (ObjCMessageNintNintNintDelegate)((_, _, _) =>
         {
             inputManager.RecordMouseButton(0, true);
@@ -84,6 +91,7 @@ public readonly struct MTKView
             .SetSuperClass("MTKView")
             .AddMethod("keyDown:", Marshal.GetFunctionPointerForDelegate(_onKeyDown), "v@:@")
             .AddMethod("keyUp:", Marshal.GetFunctionPointerForDelegate(_onKeyUp), "v@:@")
+            .AddMethod("flagsChanged:", Marshal.GetFunctionPointerForDelegate(_onFlagsChanged), "v@:@")
             .AddMethod("mouseDown:", Marshal.GetFunctionPointerForDelegate(_onMouseDown), "v@:@")
             .AddMethod("mouseUp:", Marshal.GetFunctionPointerForDelegate(_onMouseUp), "v@:@")
             .AddMethod("rightMouseDown:", Marshal.GetFunctionPointerForDelegate(_onRightMouseDown), "v@:@")

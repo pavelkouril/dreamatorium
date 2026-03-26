@@ -1,5 +1,6 @@
 using System.Numerics;
 using ImGuiNET;
+using Dreamatorium.Input;
 using Dreamatorium.Platforms.macOS;
 using SharpMetal.Foundation;
 using SharpMetal.Metal;
@@ -33,7 +34,7 @@ public sealed class ImGuiController
         _fontTexture = CreateFontTexture();
     }
 
-    public void BeginFrame(in FrameInput frameInput, ulong width, ulong height, float framebufferScale)
+    public InputCaptureState BeginFrame(in FrameInput frameInput, ulong width, ulong height, float framebufferScale)
     {
         var io = ImGui.GetIO();
         framebufferScale = MathF.Max(framebufferScale, 1.0f);
@@ -46,6 +47,8 @@ public sealed class ImGuiController
         UpdateInput(io, frameInput, displayHeightPoints);
 
         ImGui.NewFrame();
+
+        return new InputCaptureState(io.WantCaptureMouse,io.WantCaptureKeyboard || io.WantTextInput);
     }
 
     public unsafe void Render(MTLCommandBuffer commandBuffer, MTLTexture destination)

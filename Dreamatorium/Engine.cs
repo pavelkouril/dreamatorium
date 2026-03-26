@@ -59,13 +59,15 @@ public class Engine
         _lastFrameTime = totalElapsed;
         var frameInput = new FrameInput(_frameCount++, totalElapsed, deltaTimeInMs / 1000.0f, InputManager.CaptureSnapshotAndSwap());
 
-        _camera.ProcessInput(frameInput);
-
         var currentDrawable = view.CurrentDrawable;
         if (currentDrawable.NativePtr == nint.Zero)
         {
             return;
         }
+
+        InputCaptureState captureState = _imGuiRenderPass.BeginFrame(frameInput, view, currentDrawable.Texture);
+        FrameInput cameraInput = frameInput.ConsumeCapturedInputs(captureState);
+        _camera.ProcessInput(cameraInput);
 
         bool hasRequestedFrameCapture = _appUi.TryConsumeFrameCaptureRequest();
         _frameCaptureController.BeginCaptureIfRequested(hasRequestedFrameCapture, frameInput.Frame);
@@ -78,7 +80,7 @@ public class Engine
         blitEncoder.CopyFromTexture(_pipeline.FinalTexture, currentDrawable.Texture);
         blitEncoder.EndEncoding();
 
-        _imGuiRenderPass.Execute(frameInput, view, frameCommandBuffer, currentDrawable.Texture);
+        _imGuiRenderPass.Render(frameInput, frameCommandBuffer, currentDrawable.Texture);
         frameCommandBuffer.PresentDrawable(currentDrawable);
         frameCommandBuffer.Commit();
 

@@ -6,9 +6,28 @@ namespace Dreamatorium.Scene;
 
 public class Camera(float aspectRatio)
 {
-    private float _yawAngle = 90;
+    private const float kMinPitchDegrees = -89.0f;
+    private const float kMaxPitchDegrees = 89.0f;
 
-    private float _pitchAngle = 0;
+    private const float kRotationSensitivity = 0.15f;
+    private const float kPanSensitivity = 0.018f;
+    private const float kWheelDollySpeed = 2.5f;
+    private const float kDragMoveLateralSensitivity = 0.025f;
+    private const float kDragMoveForwardSensitivity = 0.06f;
+    private const float kKeyboardFlySpeed = 10.0f;
+    private const float kKeyboardFlyFastMultiplier = 3.0f;
+
+    private const float kMoveSmoothing = 14.0f;
+
+    private float _yawAngle = 90.0f;
+
+    private float _pitchAngle = 0.0f;
+
+    private Vector2 _previousMousePosition;
+
+    private bool _hasPreviousMousePosition;
+
+    private Vector3 _movementVelocity;
 
     public Vector3 Position { get; private set; } = new(0, 5, 0);
 
@@ -34,46 +53,85 @@ public class Camera(float aspectRatio)
 
     public void ProcessInput(in FrameInput frameInput)
     {
-        if (frameInput.HasKeyEvent(KeyCode.W, KeyEventType.KeyDown))
+        var mousePosition = new Vector2(frameInput.Input.MouseX, frameInput.Input.MouseY);
+
+        if (!_hasPreviousMousePosition)
         {
-            Position += Forward;
+            _previousMousePosition = mousePosition;
+            _hasPreviousMousePosition = true;
         }
 
-        if (frameInput.HasKeyEvent(KeyCode.S, KeyEventType.KeyDown))
-        {
-            Position -= Forward;
-        }
+        Vector2 mouseDelta = mousePosition - _previousMousePosition;
+        _previousMousePosition = mousePosition;
 
-        if (frameInput.HasKeyEvent(KeyCode.A, KeyEventType.KeyDown))
-        {
-            Position -= Right;
-        }
+        float deltaTime = float.Max(frameInput.DeltaTime, 1.0f / 1000.0f);
 
-        if (frameInput.HasKeyEvent(KeyCode.D, KeyEventType.KeyDown))
-        {
-            Position += Right;
-        }
+        bool rotateHeld = frameInput.IsMouseDown(0);
+        bool panHeld = frameInput.IsMouseDown(2);
+        bool moveHeld = frameInput.IsMouseDown(1);
 
-        if (frameInput.HasKeyEvent(KeyCode.Q, KeyEventType.KeyDown))
+        if (rotateHeld)
         {
-            Position -= Up;
-        }
-
-        if (frameInput.HasKeyEvent(KeyCode.E, KeyEventType.KeyDown))
-        {
-            Position += Up;
-        }
-
-        if (frameInput.HasKeyEvent(KeyCode.Z, KeyEventType.KeyDown))
-        {
-            _yawAngle -= 10;
+            _yawAngle += mouseDelta.X * kRotationSensitivity;
+            _pitchAngle = float.Clamp(_pitchAngle - mouseDelta.Y * kRotationSensitivity, kMinPitchDegrees, kMaxPitchDegrees);
             Rotation = Quaternion.CreateFromYawPitchRoll(MathExtensions.Deg2Rad(_yawAngle), MathExtensions.Deg2Rad(_pitchAngle), 0);
         }
 
-        if (frameInput.HasKeyEvent(KeyCode.X, KeyEventType.KeyDown))
+        if (panHeld)
         {
-            _yawAngle += 10;
-            Rotation = Quaternion.CreateFromYawPitchRoll(MathExtensions.Deg2Rad(_yawAngle), MathExtensions.Deg2Rad(_pitchAngle), 0);
+            Position += (-Right * mouseDelta.X + Up * mouseDelta.Y) * kPanSensitivity;
         }
+
+        if (frameInput.Input.MouseWheelY != 0.0f)
+        {
+            Position += Forward * (frameInput.Input.MouseWheelY * kWheelDollySpeed);
+        }
+
+        Vector3 desiredVelocity = Vector3.Zero;
+        if (moveHeld)
+        {
+            desiredVelocity += Right * (mouseDelta.X * kDragMoveLateralSensitivity);
+            desiredVelocity += Forward * (-mouseDelta.Y * kDragMoveForwardSensitivity);
+        }
+
+        if (rotateHeld)
+        {
+            Vector3 flyDirection = Vector3.Zero;
+            if (frameInput.IsKeyDown(KeyCode.W))
+            {
+                flyDirection += Forward;
+            }
+
+            if (frameInput.IsKeyDown(KeyCode.S))
+            {
+                flyDirection -= Forward;
+            }
+
+            if (frameInput.IsKeyDown(KeyCode.D))
+            {
+                flyDirection += Right;
+            }
+
+            if (frameInput.IsKeyDown(KeyCode.A))
+            {
+                flyDirection -= Right;
+            }
+
+            if (flyDirection.LengthSquared() > 0.0f)
+            {
+                flyDirection = Vector3.Normalize(flyDirection);
+                float flySpeed = kKeyboardFlySpeed;
+                if (frameInput.IsKeyDown(KeyCode.LeftShift) || frameInput.IsKeyDown(KeyCode.RightShift))
+                {
+                    flySpeed *= kKeyboardFlyFastMultiplier;
+                }
+
+                desiredVelocity += flyDirection * flySpeed;
+            }
+        }
+
+        float blend = 1.0f - MathF.Exp(-kMoveSmoothing * deltaTime);
+        _movementVelocity = Vector3.Lerp(_movementVelocity, desiredVelocity, blend);
+        Position += _movementVelocity * deltaTime;
     }
 }

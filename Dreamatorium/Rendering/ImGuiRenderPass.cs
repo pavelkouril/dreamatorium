@@ -1,5 +1,6 @@
 using Dreamatorium.Platforms.macOS;
 using Dreamatorium.UI;
+using Dreamatorium.Input;
 using SharpMetal.Metal;
 
 namespace Dreamatorium.Rendering;
@@ -15,9 +16,13 @@ public sealed class ImGuiRenderPass
         _ui = ui;
     }
 
-    public void Execute(in FrameInput frameInput, MTKView view, MTLCommandBuffer commandBuffer, MTLTexture destinationTexture)
+    public InputCaptureState BeginFrame(in FrameInput frameInput, MTKView view, MTLTexture destinationTexture)
     {
-        _imGuiController.BeginFrame(frameInput, destinationTexture.Width, destinationTexture.Height, view.BackingScaleFactor);
+        return _imGuiController.BeginFrame(frameInput, destinationTexture.Width, destinationTexture.Height, view.BackingScaleFactor);
+    }
+
+    public void Render(in FrameInput frameInput, MTLCommandBuffer commandBuffer, MTLTexture destinationTexture)
+    {
         _ui.Draw(frameInput);
         _imGuiController.Render(commandBuffer, destinationTexture);
     }
