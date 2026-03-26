@@ -80,7 +80,7 @@ static float3 calculateLighting(float3 albedo, float metallic, float roughness, 
         float G = geometrySmith(N, V, L, roughness);
         float3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
 
-        float3 kD = (1.0 - F) * 1.0 - metallic;
+        float3 kD = (1.0 - F) * (1.0 - metallic);
 
         float NdotL = max(dot(N, L), 0.0);
         float3 specular = NDF * G * F / (4.0 * max(dot(N, V), 0.0) * NdotL + 1e-5);

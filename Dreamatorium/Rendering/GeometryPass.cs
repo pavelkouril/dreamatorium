@@ -51,7 +51,7 @@ public class GeometryPass : IPass
 
         _gBufferGenerationDepthStencilState = makeDepthStencilState(device, StringHelper.NSString("GBuffer Generation Stage"), descriptor =>
         {
-            descriptor.DepthWriteEnabled = true;
+            descriptor.IsDepthWriteEnabled = true;
             descriptor.DepthCompareFunction = MTLCompareFunction.Less;
         });
 

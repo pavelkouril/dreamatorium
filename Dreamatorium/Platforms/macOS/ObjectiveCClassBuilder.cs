@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices.Marshalling;
+using System.Runtime.InteropServices;
 using SharpMetal.ObjectiveCCore;
 
 namespace Dreamatorium.Platforms.macOS;
@@ -31,22 +31,43 @@ public unsafe class ObjectiveCClassBuilder(string name)
 
     public nint Build()
     {
-        byte* namePointer = Utf8StringMarshaller.ConvertToUnmanaged(name);
-
-        nint classPairPointer = ObjectiveC.objc_allocateClassPair(_superClass != null ? new ObjectiveCClass(_superClass) : nint.Zero, (char*)namePointer, _extraBytes);
-
-        if (classPairPointer == nint.Zero)
+        nint namePointer = Marshal.StringToHGlobalAnsi(name);
+        try
         {
-            throw new Exception($"Failed to create ObjectiveC class {name}.");
-        }
+            nint classPairPointer = ObjectiveC.objc_allocateClassPair(_superClass != null ? new ObjectiveCClass(_superClass) : nint.Zero, (char*)namePointer, _extraBytes);
 
-        foreach (var method in _methods)
+            // When this class is already registered, reuse it instead of failing.
+            if (classPairPointer == nint.Zero)
+            {
+                nint existingClass = new ObjectiveCClass(name);
+                if (existingClass == nint.Zero)
+                {
+                    throw new Exception($"Failed to create ObjectiveC class {name}.");
+                }
+
+                return existingClass;
+            }
+
+            foreach (var method in _methods)
+            {
+                nint type = Marshal.StringToHGlobalAnsi(method.Type);
+                try
+                {
+                    ObjectiveC.class_addMethod(classPairPointer, method.Selector, method.FunctionPointer, (char*)type);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(type);
+                }
+            }
+
+            ObjectiveC.objc_registerClassPair(classPairPointer);
+
+            return classPairPointer;
+        }
+        finally
         {
-            byte* type = Utf8StringMarshaller.ConvertToUnmanaged(method.Type);
-            ObjectiveC.class_addMethod(classPairPointer, method.Selector, method.FunctionPointer, (char*)type);
+            Marshal.FreeHGlobal(namePointer);
         }
-        ObjectiveC.objc_registerClassPair(classPairPointer);
-
-        return classPairPointer;
     }
 }

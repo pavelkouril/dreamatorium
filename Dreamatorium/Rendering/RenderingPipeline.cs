@@ -45,7 +45,6 @@ public class RenderingPipeline
     public int Frame { get; private set; }
 
     private readonly GeometryPass _geometryPass;
-    private readonly BlitPass _blitPass;
     private readonly LightingPass _lightingPass;
     private readonly SkyboxPass _skyboxPass;
     private readonly ShadowPass _shadowPass;
@@ -69,7 +68,6 @@ public class RenderingPipeline
         CreateGBuffer(initialWidth, initialHeight);
 
         _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
-        _blitPass = new BlitPass(_queue);
         _shadowPass = new ShadowPass(_device, _queue, this, scene);
         _lightingPass = new LightingPass(_device, _queue, this, _shadowPass);
         _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);

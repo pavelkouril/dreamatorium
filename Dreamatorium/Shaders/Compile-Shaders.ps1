@@ -1,3 +1,19 @@
+$ErrorActionPreference = "Stop"
+
+function Invoke-Tool {
+  param(
+    [string]$FilePath,
+    [string[]]$Arguments
+  )
+
+  $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru -NoNewWindow
+  if ($null -eq $process -or $process.ExitCode -ne 0)
+  {
+    $argsString = $Arguments -join " "
+    throw "Command failed: $FilePath $argsString (exit code: $($process.ExitCode))"
+  }
+}
+
 $Location = "$PSScriptRoot/.."
 Push-Location $Location
 
@@ -16,12 +32,12 @@ $Shaders = Get-ChildItem -Path "Shaders" -Filter "*.metal" | Select-Object -Expa
 foreach ($Shader in $Shaders)
 {
   $shaderCompileArgs = @("-sdk", "macosx", "metal", "-o", "${OutputDirectory}/${Shader}.air", "-c", "Shaders/${Shader}", "-frecord-sources", "-gline-tables-only")
-  Start-Process -FilePath "xcrun" -ArgumentList $shaderCompileArgs -Wait
+  Invoke-Tool -FilePath "xcrun" -Arguments $shaderCompileArgs
 }
 
 $AirFiles = Get-ChildItem -Path $OutputDirectory -Filter "*.air" | Select-Object -ExpandProperty FullName
 
 $metallibArgs = @("-sdk", "macosx", "metallib", "-o", "${OutputDirectory}/Output.metallib") + $AirFiles
-Start-Process -FilePath "xcrun" -ArgumentList $metallibArgs -Wait
+Invoke-Tool -FilePath "xcrun" -Arguments $metallibArgs
 
 Pop-Location

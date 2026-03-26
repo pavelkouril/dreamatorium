@@ -31,8 +31,6 @@ public class LightingPass : IPass
 
     private MTLBuffer quadVertexBuffer;
 
-    private int _frame;
-
     private MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
 
     public MTLTexture OutputTexture { get; private set; }
@@ -60,10 +58,10 @@ public class LightingPass : IPass
         };
 
         var outputTexture = _device.NewTexture(outputTextureDescriptor);
-        outputTexture.Label = StringHelper.NSString("LightningPass.Output");
+        outputTexture.Label = StringHelper.NSString("LightingPass.Output");
         OutputTexture = outputTexture;
 
-        _state = makeRenderPipelineState("LightningPass.State", descriptor =>
+        _state = makeRenderPipelineState("LightingPass.State", descriptor =>
         {
             var library = ShaderLibrary.GetOrCreate(device);
             descriptor.VertexFunction = library.NewFunction(StringHelper.NSString("quad_vs"));
@@ -156,7 +154,7 @@ public class LightingPass : IPass
         };
 
         var outputTexture = _device.NewTexture(outputTextureDescriptor);
-        outputTexture.Label = StringHelper.NSString("LightningPass.Output");
+        outputTexture.Label = StringHelper.NSString("LightingPass.Output");
         OutputTexture = outputTexture;
 
         var c0 = _renderPassDescriptor.ColorAttachments.Object(0);

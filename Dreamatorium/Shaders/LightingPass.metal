@@ -2,8 +2,6 @@
 
 using namespace metal;
 
-constant bool kDebugShadowSampling = false;
-
 struct QuadSimpleOut
 {
     float4 positionCS [[ position ]];
@@ -38,7 +36,7 @@ fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameDat
    // Reconstruct world-space position
    float3 positionWS = clipSpaceToWorldSpace(in.tex_coord, depth, frameData.inverse_projection_matrix, frameData.inverse_view_matrix).xyz;
 
-   float3 N = normalize(gbufferBSample.rgb * 2.0 - 1.0);
+   float3 N = normalize(gbufferBSample.rgb);
    float3 V = normalize(frameData.camera_position - positionWS);
 
     float4 lightClipPosition = frameData.light_projection_matrix * frameData.light_view_matrix * float4(positionWS, 1.0);
