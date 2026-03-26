@@ -2,7 +2,7 @@ using Dreamatorium.Input;
 
 namespace Dreamatorium;
 
-public readonly struct FrameInput(int frame, float time, float deltaTime, byte[] keys)
+public readonly struct FrameInput(int frame, float time, float deltaTime, InputSnapshot input)
 {
     public readonly int Frame = frame;
 
@@ -10,7 +10,7 @@ public readonly struct FrameInput(int frame, float time, float deltaTime, byte[]
 
     public readonly float DeltaTime = deltaTime;
 
-    public readonly byte[] Keys = keys;
+    public readonly InputSnapshot Input = input;
 
-    public bool HasKeyEvent(KeyCode keyCode, KeyEventType type) => (Keys[(int)keyCode] & (int)type) != 0;
+    public bool HasKeyEvent(KeyCode keyCode, KeyEventType type) => (Input.KeyEventFlags[(int)keyCode] & (int)type) != 0;
 }

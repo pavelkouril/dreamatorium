@@ -4,7 +4,6 @@ using Dreamatorium.Input;
 using Dreamatorium.Rendering.Resources;
 using Dreamatorium.Scene;
 using Dreamatorium.Platforms.macOS;
-using SharpMetal.Foundation;
 using SharpMetal.Metal;
 
 namespace Dreamatorium.Rendering;
@@ -58,6 +57,8 @@ public class RenderingPipeline
 
     private readonly Camera _camera;
 
+    public MTLTexture FinalTexture => _lightingPass.OutputTexture;
+
     public RenderingPipeline(MTLDevice device, List<Mesh> scene, MTLTexture skyboxTexture, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
@@ -79,36 +80,11 @@ public class RenderingPipeline
         }
     }
 
-    public void Render(in FrameInput frameInput, MTKView view)
+    public void Render(in FrameInput frameInput, ulong targetWidth, ulong targetHeight)
     {
-        var currentDrawable = view.CurrentDrawable;
-        if (currentDrawable.NativePtr == nint.Zero)
+        if (targetWidth != GBufferA.Width || targetHeight != GBufferA.Height)
         {
-            return;
-        }
-
-        if (currentDrawable.Texture.Width != GBufferA.Width || currentDrawable.Texture.Height != GBufferA.Height)
-        {
-            Resize(currentDrawable.Texture.Width, currentDrawable.Texture.Height);
-        }
-
-        bool hasRequestedFrameCapture = frameInput.HasKeyEvent(KeyCode.P, KeyEventType.KeyDown) && !frameInput.HasKeyEvent(KeyCode.P, KeyEventType.IsRepeat);
-        MTLCaptureManager cm = default;
-        if (hasRequestedFrameCapture)
-        {
-            cm = MTLCaptureManager.SharedCaptureManager;
-            var desc = new MTLCaptureDescriptor();
-            desc.CaptureObject = new NSObject(_device);
-            string captureFileName = $"capture_{frameInput.Frame}.gputrace";
-            Console.WriteLine($"Capturing trace to {captureFileName}");
-            desc.OutputURL = NSURL.FileURLWithPath(StringHelper.NSString(captureFileName));
-            desc.Destination = MTLCaptureDestination.GPUTraceDocument;
-            NSError error = default;
-            cm.StartCapture(desc, ref error);
-            if (error.Code != 0)
-            {
-                Console.WriteLine(StringHelper.String(error.LocalizedDescription));
-            }
+            Resize(targetWidth, targetHeight);
         }
 
         Frame = (Frame + 1) % kMaxFramesInFlight;
@@ -151,29 +127,17 @@ public class RenderingPipeline
 
         _renderPasses.Add(_skyboxPass);
 
-        var finalTexture = _lightingPass.OutputTexture;
-
         foreach (var pass in _renderPasses)
         {
             pass.Execute();
         }
+    }
 
-        // present the output
-        var presentCommandBuffer = _queue.CommandBuffer();
-        presentCommandBuffer.Label = StringHelper.NSString("Present Command Buffer");
-
-        var blitEncoder = presentCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
-        blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
-        blitEncoder.CopyFromTexture(finalTexture, currentDrawable.Texture);
-        blitEncoder.EndEncoding();
-
-        presentCommandBuffer.PresentDrawable(currentDrawable);
-        presentCommandBuffer.Commit();
-
-        if (cm.NativePtr != nint.Zero && cm.IsCapturing)
-        {
-            cm.StopCapture();
-        }
+    public MTLCommandBuffer CreateFrameCommandBuffer(string label)
+    {
+        var commandBuffer = _queue.CommandBuffer();
+        commandBuffer.Label = StringHelper.NSString(label);
+        return commandBuffer;
     }
 
     private void CreateGBuffer(ulong width, ulong height)
