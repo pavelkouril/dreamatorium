@@ -15,14 +15,14 @@ namespace Dreamatorium;
 public class Engine
 {
     private readonly Stopwatch _watch = new Stopwatch();
-    private readonly MTLDevice _device;
-
     private readonly List<Mesh> _scene;
 
     private readonly Camera _camera;
 
     private readonly RenderingPipeline _pipeline;
     private readonly ImGuiRenderPass _imGuiRenderPass;
+    private readonly AppUi _appUi;
+    private readonly FrameCaptureController _frameCaptureController;
 
     private int _frameCount;
 
@@ -32,8 +32,6 @@ public class Engine
 
     public Engine(MTLDevice device, InputManager inputManager, ulong initialWidth, ulong initialHeight)
     {
-        _device = device;
-
         var assetLoader = new AssetLoader(device);
         var loader = new SponzaLoader();
         _scene = loader.LoadFromFile(assetLoader, "Data/sponza/sponza.obj", device);
@@ -43,7 +41,9 @@ public class Engine
         _camera = new Camera(initialWidth / (float)initialHeight);
 
         _pipeline = new RenderingPipeline(device, _scene, skyboxTexture, _camera, initialWidth, initialHeight);
-        _imGuiRenderPass = new ImGuiRenderPass(device, new AppUi());
+        _appUi = new AppUi();
+        _imGuiRenderPass = new ImGuiRenderPass(device, _appUi);
+        _frameCaptureController = new FrameCaptureController(device);
 
         InputManager = inputManager;
 
@@ -67,26 +67,8 @@ public class Engine
             return;
         }
 
-        bool hasRequestedFrameCapture = frameInput.HasKeyEvent(KeyCode.P, KeyEventType.KeyDown) && !frameInput.HasKeyEvent(KeyCode.P, KeyEventType.IsRepeat);
-        MTLCaptureManager captureManager = default;
-        if (hasRequestedFrameCapture)
-        {
-            captureManager = MTLCaptureManager.SharedCaptureManager;
-            var desc = new MTLCaptureDescriptor
-            {
-                CaptureObject = new SharpMetal.Foundation.NSObject(_device),
-                Destination = MTLCaptureDestination.GPUTraceDocument
-            };
-            string captureFileName = $"capture_{frameInput.Frame}.gputrace";
-            Console.WriteLine($"Capturing trace to {captureFileName}");
-            desc.OutputURL = SharpMetal.Foundation.NSURL.FileURLWithPath(StringHelper.NSString(captureFileName));
-            SharpMetal.Foundation.NSError error = default;
-            captureManager.StartCapture(desc, ref error);
-            if (error.Code != 0)
-            {
-                Console.WriteLine(StringHelper.String(error.LocalizedDescription));
-            }
-        }
+        bool hasRequestedFrameCapture = _appUi.TryConsumeFrameCaptureRequest();
+        _frameCaptureController.BeginCaptureIfRequested(hasRequestedFrameCapture, frameInput.Frame);
 
         _pipeline.Render(frameInput, currentDrawable.Texture.Width, currentDrawable.Texture.Height);
 
@@ -100,10 +82,7 @@ public class Engine
         frameCommandBuffer.PresentDrawable(currentDrawable);
         frameCommandBuffer.Commit();
 
-        if (captureManager.NativePtr != nint.Zero && captureManager.IsCapturing)
-        {
-            captureManager.StopCapture();
-        }
+        _frameCaptureController.EndCaptureAndReveal();
     }
 
     public void Resize(MTKView view, NSRect size)
