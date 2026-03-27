@@ -73,17 +73,13 @@ public class Engine
         bool hasRequestedFrameCapture = _appUi.TryConsumeFrameCaptureRequest();
         _frameCaptureController.BeginCaptureIfRequested(hasRequestedFrameCapture, frameInput.Frame);
 
+        _pipeline.SetBufferVisualizationSelection(_appUi.SelectedBufferVisualizationKey);
         _pipeline.Render(frameInput, currentDrawable.Texture.Width, currentDrawable.Texture.Height);
 
         var frameCommandBuffer = _pipeline.CreateFrameCommandBuffer("Frame Command Buffer");
         var blitEncoder = frameCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
         blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
-        var textureToDisplay = _pipeline.FinalTexture;
-        if (!string.IsNullOrWhiteSpace(_appUi.SelectedBufferVisualizationKey))
-        {
-            textureToDisplay = _pipeline.ResolveBufferVisualizationTexture(_appUi.SelectedBufferVisualizationKey);
-        }
-        blitEncoder.CopyFromTexture(textureToDisplay, currentDrawable.Texture);
+        blitEncoder.CopyFromTexture(_pipeline.FinalTexture, currentDrawable.Texture);
         blitEncoder.EndEncoding();
 
         _imGuiRenderPass.Render(frameInput, frameCommandBuffer, currentDrawable.Texture);

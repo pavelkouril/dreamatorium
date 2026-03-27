@@ -20,19 +20,34 @@ public class RenderingPipeline
     private MTLDevice _device;
 
     private readonly List<IPass> _renderPasses = [];
-    private readonly Dictionary<string, Func<MTLTexture>> _bufferVisualizationResolvers = new();
+    private readonly Dictionary<string, BufferVisualizationEntry> _bufferVisualizationEntries = new();
     private readonly List<(string Key, string Label)> _bufferVisualizationOptions = [];
+    private string _selectedBufferVisualizationKey = string.Empty;
+
+    private readonly struct BufferVisualizationEntry
+    {
+        public BufferVisualizationEntry(Func<MTLTexture> resolveTexture, BufferVisualizationChannels channels)
+        {
+            ResolveTexture = resolveTexture;
+            Channels = channels;
+        }
+
+        public Func<MTLTexture> ResolveTexture { get; }
+        public BufferVisualizationChannels Channels { get; }
+    }
 
     /// <summary>
     /// GBuffer Texture containing BaseColor + Roughness
     /// </summary>
-    [BufferVisualization]
+    [BufferVisualization("BaseColor")]
+    [BufferVisualization("Roughness", BufferVisualizationChannels.A)]
     public MTLTexture GBufferA { get; private set; }
 
     /// <summary>
     /// GBuffer Texture containing WorldSpace Normals + Metalness
     /// </summary>
-    [BufferVisualization]
+    [BufferVisualization("Normals")]
+    [BufferVisualization("Metalness", BufferVisualizationChannels.A)]
     public MTLTexture GBufferB { get; private set; }
 
     /// <summary>
@@ -52,6 +67,7 @@ public class RenderingPipeline
     private readonly GeometryPass _geometryPass;
     private readonly LightingPass _lightingPass;
     private readonly SkyboxPass _skyboxPass;
+    private readonly DebugPresentPass _debugPresentPass;
     private readonly ShadowPass _shadowPass;
     private readonly Vector3 _mainLightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
 
@@ -61,7 +77,7 @@ public class RenderingPipeline
 
     private readonly Camera _camera;
 
-    public MTLTexture FinalTexture => _lightingPass.OutputTexture;
+    public MTLTexture FinalTexture => HasActiveBufferVisualization ? _debugPresentPass.OutputTexture : _lightingPass.OutputTexture;
 
     public IReadOnlyList<(string Key, string Label)> BufferVisualizationOptions => _bufferVisualizationOptions;
 
@@ -78,6 +94,7 @@ public class RenderingPipeline
         _shadowPass = new ShadowPass(_device, _queue, this, scene);
         _lightingPass = new LightingPass(_device, _queue, this, _shadowPass);
         _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);
+        _debugPresentPass = new DebugPresentPass(_device, _queue, this);
         ConfigureBufferVisualizationOptions();
 
         for (int i = 0; i < _frameData.Length; i++)
@@ -130,8 +147,11 @@ public class RenderingPipeline
 
         _renderPasses.Add(_shadowPass);
         _renderPasses.Add(_lightingPass);
-
         _renderPasses.Add(_skyboxPass);
+        if (HasActiveBufferVisualization)
+        {
+            _renderPasses.Add(_debugPresentPass);
+        }
 
         foreach (var pass in _renderPasses)
         {
@@ -146,18 +166,44 @@ public class RenderingPipeline
         return commandBuffer;
     }
 
+    public void SetBufferVisualizationSelection(string key)
+    {
+        _selectedBufferVisualizationKey = key ?? string.Empty;
+    }
+
+    public bool HasActiveBufferVisualization => TryResolveBufferVisualization(_selectedBufferVisualizationKey, out _, out _);
+
+    public bool TryGetActiveBufferVisualization(out MTLTexture texture, out BufferVisualizationChannels channels)
+    {
+        return TryResolveBufferVisualization(_selectedBufferVisualizationKey, out texture, out channels);
+    }
+
     public MTLTexture ResolveBufferVisualizationTexture(string key)
     {
-        if (_bufferVisualizationResolvers.TryGetValue(key, out Func<MTLTexture>? resolveTexture))
+        if (TryResolveBufferVisualization(key, out MTLTexture texture, out _))
         {
-            MTLTexture selectedTexture = resolveTexture();
-            if (selectedTexture.NativePtr != nint.Zero)
+            return texture;
+        }
+
+        return _lightingPass.OutputTexture;
+    }
+
+    private bool TryResolveBufferVisualization(string key, out MTLTexture texture, out BufferVisualizationChannels channels)
+    {
+        if (!string.IsNullOrWhiteSpace(key) && _bufferVisualizationEntries.TryGetValue(key, out BufferVisualizationEntry entry))
+        {
+            MTLTexture resolvedTexture = entry.ResolveTexture();
+            if (resolvedTexture.NativePtr != nint.Zero)
             {
-                return selectedTexture;
+                texture = resolvedTexture;
+                channels = entry.Channels;
+                return true;
             }
         }
 
-        return FinalTexture;
+        texture = default;
+        channels = BufferVisualizationChannels.RGB;
+        return false;
     }
 
     private void CreateGBuffer(ulong width, ulong height)
@@ -218,6 +264,7 @@ public class RenderingPipeline
 
         CreateGBuffer(width, height);
         _lightingPass.Resize(width, height);
+        _debugPresentPass.Resize(width, height);
     }
 
     private static void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)
@@ -239,7 +286,7 @@ public class RenderingPipeline
 
     private void ConfigureBufferVisualizationOptions()
     {
-        _bufferVisualizationResolvers.Clear();
+        _bufferVisualizationEntries.Clear();
         _bufferVisualizationOptions.Clear();
 
         RegisterBufferVisualizations("Pipeline", this);
@@ -257,36 +304,42 @@ public class RenderingPipeline
 
         foreach (PropertyInfo property in ownerType.GetProperties(flags))
         {
-            BufferVisualizationAttribute? visualizationAttribute = property.GetCustomAttribute<BufferVisualizationAttribute>();
-            if (property.PropertyType != typeof(MTLTexture) || visualizationAttribute is null)
+            var visualizationAttributes = property.GetCustomAttributes<BufferVisualizationAttribute>().ToArray();
+            foreach (var visualizationAttribute in visualizationAttributes)
             {
-                continue;
-            }
+                if (property.PropertyType != typeof(MTLTexture))
+                {
+                    continue;
+                }
 
-            MethodInfo? getter = property.GetGetMethod(nonPublic: true);
-            if (getter is null)
-            {
-                continue;
-            }
+                MethodInfo? getter = property.GetGetMethod(nonPublic: true);
+                if (getter is null)
+                {
+                    continue;
+                }
 
-            string key = $"{ownerName}:property:{property.Name}";
-            string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? property.Name : visualizationAttribute.DisplayName;
-            _bufferVisualizationResolvers[key] = () => (MTLTexture)getter.Invoke(owner, null)!;
-            _bufferVisualizationOptions.Add((key, label));
+                string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? property.Name : visualizationAttribute.DisplayName;
+                string key = $"{ownerName}:property:{property.Name}:{visualizationAttribute.Channels}:{label}";
+                _bufferVisualizationEntries[key] = new BufferVisualizationEntry(() => (MTLTexture)getter.Invoke(owner, null)!, visualizationAttribute.Channels);
+                _bufferVisualizationOptions.Add((key, label));
+            }
         }
 
         foreach (FieldInfo field in ownerType.GetFields(flags))
         {
-            BufferVisualizationAttribute? visualizationAttribute = field.GetCustomAttribute<BufferVisualizationAttribute>();
-            if (field.FieldType != typeof(MTLTexture) || visualizationAttribute is null)
+            var visualizationAttributes = field.GetCustomAttributes<BufferVisualizationAttribute>().ToArray();
+            foreach (var visualizationAttribute in visualizationAttributes)
             {
-                continue;
-            }
+                if (field.FieldType != typeof(MTLTexture))
+                {
+                    continue;
+                }
 
-            string key = $"{ownerName}:field:{field.Name}";
-            string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? field.Name : visualizationAttribute.DisplayName;
-            _bufferVisualizationResolvers[key] = () => (MTLTexture)field.GetValue(owner)!;
-            _bufferVisualizationOptions.Add((key, label));
+                string label = string.IsNullOrWhiteSpace(visualizationAttribute.DisplayName) ? field.Name : visualizationAttribute.DisplayName;
+                string key = $"{ownerName}:field:{field.Name}:{visualizationAttribute.Channels}:{label}";
+                _bufferVisualizationEntries[key] = new BufferVisualizationEntry(() => (MTLTexture)field.GetValue(owner)!, visualizationAttribute.Channels);
+                _bufferVisualizationOptions.Add((key, label));
+            }
         }
     }
 
