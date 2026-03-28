@@ -37,7 +37,7 @@ fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameDat
    float3 positionWS = clipSpaceToWorldSpace(in.tex_coord, depth, frameData.inverse_projection_matrix, frameData.inverse_view_matrix).xyz;
 
    float3 N = normalize(gbufferBSample.rgb);
-   float3 V = normalize(frameData.camera_position - positionWS);
+   float3 V = normalize(frameData.camera_position.xyz - positionWS);
 
     float4 lightClipPosition = frameData.light_projection_matrix * frameData.light_view_matrix * float4(positionWS, 1.0);
     float3 lightNdc = lightClipPosition.xyz / max(lightClipPosition.w, 1e-5);
@@ -53,7 +53,7 @@ fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameDat
     if (insideShadowMap && insideShadowDepth)
     {
         closestDepth = shadowMap.sample(shadowSampler, shadowUv);
-        float NdotL = max(dot(N, normalize(lightingData.direction)), 0.0);
+        float NdotL = max(dot(N, normalize(lightingData.direction.xyz)), 0.0);
         float bias = max(0.002 * (1.0 - NdotL), 0.0005);
         directionalShadow = (currentLightDepth - bias) > closestDepth ? 0.0 : 1.0;
     }

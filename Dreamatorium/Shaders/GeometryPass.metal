@@ -14,7 +14,7 @@ typedef struct
     matrix_float4x4 model;
     matrix_float4x4 view;
     matrix_float4x4 projection;
-    matrix_float3x3 normal_matrix;
+    matrix_float4x4 normal_matrix;
 } GBufferFrameData;
 
 typedef struct
@@ -48,9 +48,10 @@ vertex Vert2Frag gbuffer_vertex(DescriptorDefinedVertex in [[ stage_in ]], const
 
     out.tex_coord = in.tex_coord.xy;
 
-    out.tangent = normalize(frameData.normal_matrix * in.tangent);
-    out.bitangent = -normalize(frameData.normal_matrix * in.bitangent);
-    out.normal = normalize(frameData.normal_matrix * in.normal);
+    float3x3 normalMatrix = float3x3(frameData.normal_matrix[0].xyz, frameData.normal_matrix[1].xyz, frameData.normal_matrix[2].xyz);
+    out.tangent = normalize(normalMatrix * in.tangent);
+    out.bitangent = -normalize(normalMatrix * in.bitangent);
+    out.normal = normalize(normalMatrix * in.normal);
 
     return out;
 }

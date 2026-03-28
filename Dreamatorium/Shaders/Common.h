@@ -13,7 +13,7 @@ using namespace metal;
 struct FrameData
 {
     float4 projection_parameters;
-    float3 camera_position;
+    float4 camera_position;
     matrix_float4x4 view_matrix;
     matrix_float4x4 projection_matrix;
     matrix_float4x4 inverse_view_matrix;

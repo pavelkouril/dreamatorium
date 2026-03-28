@@ -93,12 +93,8 @@ public class GeometryPass : IPass<GeometryPassSettings>
 
         var frameDataBuffer = _frameData[_pipeline.Frame];
 
-        var t = Matrix4x4.CreateTranslation(0, 0, 0);
-        var r = Matrix4x4.CreateFromYawPitchRoll(0, 0, 0);
-        var s = Matrix4x4.CreateScale(0.1f);
-        var trs = s * r * t;
-
-        var modelMatrix = trs;
+        var modelMatrix = Matrix4x4.Identity;
+        var normalMatrix = CreateNormalMatrix(modelMatrix);
 
         unsafe
         {
@@ -106,9 +102,7 @@ public class GeometryPass : IPass<GeometryPassSettings>
             pFrameData->ModelMatrix = modelMatrix;
             pFrameData->ViewMatrix = _camera.WorldToCameraMatrix;
             pFrameData->ProjectionMatrix = _camera.ProjectionMatrix;
-            pFrameData->NormalMatrixCol1 = new Vector4(modelMatrix.M11, modelMatrix.M21, modelMatrix.M31, 0);
-            pFrameData->NormalMatrixCol2 = new Vector4(modelMatrix.M12, modelMatrix.M22, modelMatrix.M32, 0);
-            pFrameData->NormalMatrixCol3 = new Vector4(modelMatrix.M13, modelMatrix.M23, modelMatrix.M33, 0);
+            pFrameData->NormalMatrix = normalMatrix;
         }
 
         renderEncoder.PushDebugGroup(StringHelper.NSString("Set Frame Data"));
@@ -180,15 +174,30 @@ public class GeometryPass : IPass<GeometryPassSettings>
         return device.NewDepthStencilState(descriptor);
     }
 
+    private static Matrix4x4 CreateNormalMatrix(Matrix4x4 modelMatrix)
+    {
+        if (!Matrix4x4.Invert(modelMatrix, out Matrix4x4 inverseModelMatrix))
+        {
+            return Matrix4x4.Identity;
+        }
+
+        Matrix4x4 normalMatrix = Matrix4x4.Transpose(inverseModelMatrix);
+        normalMatrix.M14 = 0.0f;
+        normalMatrix.M24 = 0.0f;
+        normalMatrix.M34 = 0.0f;
+        normalMatrix.M41 = 0.0f;
+        normalMatrix.M42 = 0.0f;
+        normalMatrix.M43 = 0.0f;
+        normalMatrix.M44 = 1.0f;
+        return normalMatrix;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct FrameData
     {
         public Matrix4x4 ModelMatrix;
         public Matrix4x4 ViewMatrix;
         public Matrix4x4 ProjectionMatrix;
-        // metal expects matrix 3x3 to have Vector4 vectors internally
-        public Vector4 NormalMatrixCol1;
-        public Vector4 NormalMatrixCol2;
-        public Vector4 NormalMatrixCol3;
+        public Matrix4x4 NormalMatrix;
     }
 }

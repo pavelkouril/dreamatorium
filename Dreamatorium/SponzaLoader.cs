@@ -8,6 +8,8 @@ namespace Dreamatorium;
 
 public class SponzaLoader
 {
+    private const float kSceneImportScale = 0.1f;
+
     public List<Mesh> LoadFromFile(AssetLoader loader, string filePath, MTLDevice device)
     {
         var rv = new List<Mesh>();
@@ -19,7 +21,7 @@ public class SponzaLoader
 
         using AssimpContext importer = new AssimpContext();
 
-        Assimp.Scene scene = importer.ImportFile(filePath, PostProcessSteps.CalculateTangentSpace | PostProcessSteps.Triangulate | PostProcessSteps.GenerateNormals | PostProcessSteps.JoinIdenticalVertices | PostProcessSteps.ImproveCacheLocality | PostProcessSteps.FlipUVs);
+        Assimp.Scene scene = importer.ImportFile(filePath, PostProcessSteps.CalculateTangentSpace | PostProcessSteps.Triangulate | PostProcessSteps.GenerateNormals | PostProcessSteps.JoinIdenticalVertices | PostProcessSteps.ImproveCacheLocality | PostProcessSteps.MakeLeftHanded | PostProcessSteps.FlipWindingOrder | PostProcessSteps.FlipUVs);
 
         if (scene == null)
         {
@@ -50,7 +52,7 @@ public class SponzaLoader
 
         foreach (var mesh in scene.Meshes)
         {
-            var m = Mesh.FromAssimpMesh(mesh, materials[mesh.MaterialIndex], device);
+            var m = Mesh.FromAssimpMesh(mesh, materials[mesh.MaterialIndex], device, kSceneImportScale);
             rv.Add(m);
         }
 

@@ -115,7 +115,7 @@ public class ShadowPass : IPass
         renderEncoder.SetCullMode(MTLCullMode.Back);
 
         var frameDataBuffer = _frameData[_pipeline.Frame];
-        var modelMatrix = Matrix4x4.CreateScale(0.1f);
+        var modelMatrix = Matrix4x4.Identity;
 
         unsafe
         {

@@ -127,7 +127,7 @@ public class RenderingPipeline
                 pFrameData->InverseProjectionMatrix = invProjectionMatrix;
             }
             pFrameData->ProjectionParameters = new Vector4(1, _camera.NearPlaneDistance, _camera.FarPlaneDistance, 1 / _camera.FarPlaneDistance);
-            pFrameData->ViewProjectionMatrix = _camera.ProjectionMatrix * _camera.WorldToCameraMatrix;
+            pFrameData->ViewProjectionMatrix = _camera.WorldToCameraMatrix * _camera.ProjectionMatrix;
             if (Matrix4x4.Invert(pFrameData->ViewProjectionMatrix, out Matrix4x4 invViewProjectionMatrix))
             {
                 pFrameData->InverseViewProjectionMatrix = invViewProjectionMatrix;
@@ -137,7 +137,7 @@ public class RenderingPipeline
             BuildDirectionalLightMatrices(_mainLightDirection, out Matrix4x4 lightViewMatrix, out Matrix4x4 lightProjectionMatrix);
             pFrameData->LightViewMatrix = lightViewMatrix;
             pFrameData->LightProjectionMatrix = lightProjectionMatrix;
-            pFrameData->LightViewProjectionMatrix = lightProjectionMatrix * lightViewMatrix;
+            pFrameData->LightViewProjectionMatrix = lightViewMatrix * lightProjectionMatrix;
         }
 
         _renderPasses.Clear();

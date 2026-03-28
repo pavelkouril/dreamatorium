@@ -20,9 +20,15 @@ public class Mesh(string name, Material material)
 
     public string Name { get; private set; } = name;
 
-    public static Mesh FromAssimpMesh(Assimp.Mesh mesh, Material material, MTLDevice device)
+    public static Mesh FromAssimpMesh(Assimp.Mesh mesh, Material material, MTLDevice device, float importScale = 1.0f)
     {
         var rv = new Mesh(mesh.Name, material);
+        var scaledPositions = new List<Vector3>(mesh.VertexCount);
+        for (int i = 0; i < mesh.VertexCount; i++)
+        {
+            var position = mesh.Vertices[i];
+            scaledPositions.Add(new Vector3(position.X * importScale, position.Y * importScale, position.Z * importScale));
+        }
 
         var positionsDataSize = (ulong)(mesh.VertexCount * Marshal.SizeOf<Vector3>());
         var normalsDataSize = (ulong)(mesh.VertexCount * Marshal.SizeOf<Vector3>());
@@ -45,7 +51,7 @@ public class Mesh(string name, Material material)
         rv._indexBuffer = device.NewBuffer(indexBufferSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._indexBuffer.Label = StringHelper.NSString($"{mesh.Name}/IndexBuffer");
 
-        LoadData(mesh.Vertices, rv._vertexPositionsBuffer);
+        LoadData(scaledPositions, rv._vertexPositionsBuffer);
         LoadData(mesh.Normals, rv._vertexNormalsBuffer);
         LoadData(mesh.Tangents, rv._vertexTangentsBuffer);
         LoadData(mesh.BiTangents, rv._vertexBitangentsBuffer);

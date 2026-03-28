@@ -4,12 +4,15 @@
 
 struct LightingData
 {
-    float3 position;
-    float3 direction;
+    float4 position;
+    float4 direction;
     // Color RGB, Intensity A
     float4 colorIntensity;
     // 0 - Directional, 1 - Point
     uint type;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
 };
 
 using namespace metal;
@@ -63,11 +66,11 @@ static float3 calculateLighting(float3 albedo, float metallic, float roughness, 
 
         if (lightingData[i].type == 0)
         {
-            L = normalize(lightingData[i].direction);
+            L = normalize(lightingData[i].direction.xyz);
         }
         else
         {
-            L = lightingData[i].position - positionWS;
+            L = lightingData[i].position.xyz - positionWS;
             float distance = distance = length(L);
             L = normalize(L);
 
