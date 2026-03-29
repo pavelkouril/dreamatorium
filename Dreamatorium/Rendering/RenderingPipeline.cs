@@ -103,7 +103,7 @@ public class RenderingPipeline
         }
     }
 
-    public void Render(in FrameInput frameInput, ulong targetWidth, ulong targetHeight)
+    public void Render(in FrameInput frameInput, MTLCommandBuffer commandBuffer, ulong targetWidth, ulong targetHeight)
     {
         if (targetWidth != GBufferA.Width || targetHeight != GBufferA.Height)
         {
@@ -155,7 +155,7 @@ public class RenderingPipeline
 
         foreach (var pass in _renderPasses)
         {
-            pass.Execute();
+            pass.Execute(commandBuffer);
         }
     }
 

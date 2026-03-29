@@ -103,11 +103,8 @@ public class LightingPass : IPass<LightingPassSettings>
         c0.Texture = OutputTexture;
     }
 
-    public void Execute()
+    public void Execute(MTLCommandBuffer commandBuffer)
     {
-        var commandBuffer = _queue.CommandBuffer();
-        commandBuffer.Label = StringHelper.NSString("FullScreenPass/CommandBuffer");
-
         var renderEncoder = commandBuffer.RenderCommandEncoder(_renderPassDescriptor);
 
         renderEncoder.Label = StringHelper.NSString("FullScreenPass/Encoder");
@@ -128,8 +125,6 @@ public class LightingPass : IPass<LightingPassSettings>
         renderEncoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 6);
 
         renderEncoder.EndEncoding();
-
-        commandBuffer.Commit();
     }
 
     public void Resize(ulong width, ulong height)

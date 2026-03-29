@@ -70,11 +70,8 @@ public class GeometryPass : IPass<GeometryPassSettings>
         descriptor.ColorAttachments.SetObject(attach, index);
     }
 
-    public void Execute()
+    public void Execute(MTLCommandBuffer commandBuffer)
     {
-        var commandBuffer = _queue.CommandBuffer();
-        commandBuffer.Label = StringHelper.NSString("GBuffer Commands");
-
         var cA0 = _gBufferPassDescriptor.ColorAttachments.Object(0);
         cA0.Texture = _pipeline.GBufferA;
         var cA1 = _gBufferPassDescriptor.ColorAttachments.Object(1);
@@ -147,8 +144,6 @@ public class GeometryPass : IPass<GeometryPassSettings>
         }
 
         renderEncoder.EndEncoding();
-
-        commandBuffer.Commit();
     }
 
     private MTLRenderPipelineState makeRenderPipelineState(MTLDevice device, string label, Action<MTLRenderPipelineDescriptor> block)

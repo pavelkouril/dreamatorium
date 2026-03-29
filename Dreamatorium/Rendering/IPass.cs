@@ -1,8 +1,10 @@
+using SharpMetal.Metal;
+
 namespace Dreamatorium.Rendering;
 
 public interface IPass
 {
-    public void Execute();
+    public void Execute(MTLCommandBuffer commandBuffer);
 }
 
 public interface IPass<TSettings> : IPass

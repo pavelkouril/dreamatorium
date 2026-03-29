@@ -74,9 +74,11 @@ public class Engine
         _frameCaptureController.BeginCaptureIfRequested(hasRequestedFrameCapture, frameInput.Frame);
 
         _pipeline.SetBufferVisualizationSelection(_appUi.SelectedBufferVisualizationKey);
-        _pipeline.Render(frameInput, currentDrawable.Texture.Width, currentDrawable.Texture.Height);
 
         var frameCommandBuffer = _pipeline.CreateFrameCommandBuffer("Frame Command Buffer");
+
+        _pipeline.Render(frameInput, frameCommandBuffer, currentDrawable.Texture.Width, currentDrawable.Texture.Height);
+
         var blitEncoder = frameCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
         blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
         blitEncoder.CopyFromTexture(_pipeline.FinalTexture, currentDrawable.Texture);

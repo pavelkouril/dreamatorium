@@ -76,15 +76,12 @@ public class DebugPresentPass : IPass
         _renderPassDescriptor.ColorAttachments.SetObject(c0Attachment, 0);
     }
 
-    public void Execute()
+    public void Execute(MTLCommandBuffer commandBuffer)
     {
         if (!_pipeline.TryGetActiveBufferVisualization(out MTLTexture sourceTexture, out BufferVisualizationChannels channels))
         {
             return;
         }
-
-        var commandBuffer = _queue.CommandBuffer();
-        commandBuffer.Label = StringHelper.NSString("DebugPresentPass/CommandBuffer");
 
         var renderEncoder = commandBuffer.RenderCommandEncoder(_renderPassDescriptor);
         renderEncoder.Label = StringHelper.NSString("DebugPresentPass/Encoder");
@@ -100,8 +97,6 @@ public class DebugPresentPass : IPass
 
         renderEncoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 6);
         renderEncoder.EndEncoding();
-
-        commandBuffer.Commit();
     }
 
     public void Resize(ulong width, ulong height)

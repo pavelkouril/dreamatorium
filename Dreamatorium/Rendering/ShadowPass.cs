@@ -94,11 +94,8 @@ public class ShadowPass : IPass
         }
     }
 
-    public void Execute()
+    public void Execute(MTLCommandBuffer commandBuffer)
     {
-        var commandBuffer = _queue.CommandBuffer();
-        commandBuffer.Label = StringHelper.NSString("ShadowPass.CommandBuffer");
-
         var renderEncoder = commandBuffer.RenderCommandEncoder(_shadowPassDescriptor);
         renderEncoder.Label = StringHelper.NSString("ShadowPass.Encoder");
         renderEncoder.SetViewport(new MTLViewport
@@ -148,7 +145,6 @@ public class ShadowPass : IPass
         }
 
         renderEncoder.EndEncoding();
-        commandBuffer.Commit();
     }
 
     [StructLayout(LayoutKind.Sequential)]
