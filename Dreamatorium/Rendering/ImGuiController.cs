@@ -10,14 +10,21 @@ namespace Dreamatorium.Rendering;
 public sealed class ImGuiController
 {
     private MTLDevice _device;
-    private readonly MTLRenderPassDescriptor _renderPassDescriptor = new MTLRenderPassDescriptor();
+    private readonly MTL4RenderPassDescriptor _renderPassDescriptor = new MTL4RenderPassDescriptor();
     private readonly MTLRenderPipelineState _pipelineState;
     private readonly MTLSamplerState _samplerState;
     private readonly MTLBuffer _projectionBuffer;
     private readonly MTLTexture _fontTexture;
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
+    private readonly MTLBuffer[] _vertexBuffers = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
+    private readonly MTLBuffer[] _indexBuffers = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
+    private bool _trackedStaticResidency;
 
     private const int kImGuiTextureId = 1;
     private const int kMouseButtonCount = 3;
+    private const ulong kInitialVertexBufferSize = 1UL << 20; // 1 MB
+    private const ulong kInitialIndexBufferSize = 1UL << 20; // 1 MB
 
     public ImGuiController(MTLDevice device, MTLPixelFormat colorFormat)
     {
@@ -32,6 +39,28 @@ public sealed class ImGuiController
         _samplerState = CreateSamplerState();
         _projectionBuffer = _device.NewBuffer((ulong)sizeof(float) * 16, MTLResourceOptions.ResourceStorageModeShared);
         _fontTexture = CreateFontTexture();
+
+        var vertexArgsDescriptor = new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 2,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false
+        };
+        NSError argumentTableError = default;
+        _vertexArgs = _device.NewArgumentTable(vertexArgsDescriptor, ref argumentTableError);
+        ThrowIfArgumentTableCreationFailed(argumentTableError, "vertex");
+
+        var fragmentArgsDescriptor = new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 0,
+            MaxSamplerStateBindCount = 1,
+            MaxTextureBindCount = 1,
+            SupportAttributeStrides = false
+        };
+        argumentTableError = default;
+        _fragmentArgs = _device.NewArgumentTable(fragmentArgsDescriptor, ref argumentTableError);
+        ThrowIfArgumentTableCreationFailed(argumentTableError, "fragment");
     }
 
     public InputCaptureState BeginFrame(in FrameInput frameInput, ulong width, ulong height, float framebufferScale)
@@ -51,7 +80,7 @@ public sealed class ImGuiController
         return new InputCaptureState(io.WantCaptureMouse,io.WantCaptureKeyboard || io.WantTextInput);
     }
 
-    public unsafe void Render(MTLCommandBuffer commandBuffer, MTLTexture destination)
+    public unsafe void Render(MTL4CommandBuffer commandBuffer, MTLTexture destination, MTLResidencySet residencySet, int frameIndex)
     {
         ImGui.Render();
         var drawData = ImGui.GetDrawData();
@@ -60,13 +89,63 @@ public sealed class ImGuiController
             return;
         }
 
+        bool residencySetChanged = TrackStaticResidency(residencySet);
+
+        int slot = Math.Abs(frameIndex % RenderingPipeline.kMaxFramesInFlight);
+        ulong requiredVertexBytes = (ulong)drawData.TotalVtxCount * (ulong)sizeof(ImDrawVert);
+        ulong requiredIndexBytes = (ulong)drawData.TotalIdxCount * sizeof(ushort);
+        residencySetChanged |= EnsureBufferCapacity(slot, requiredVertexBytes, true, residencySet);
+        residencySetChanged |= EnsureBufferCapacity(slot, requiredIndexBytes, false, residencySet);
+        if (residencySetChanged)
+        {
+            residencySet.Commit();
+        }
+
+        var vertexBuffer = _vertexBuffers[slot];
+        var indexBuffer = _indexBuffers[slot];
+        if (vertexBuffer.NativePtr == nint.Zero || indexBuffer.NativePtr == nint.Zero)
+        {
+            return;
+        }
+
+        int[] listVertexOffsets = new int[drawData.CmdListsCount];
+        int[] listIndexOffsets = new int[drawData.CmdListsCount];
+        int runningVertexOffset = 0;
+        int runningIndexOffset = 0;
+        var vertexDestination = (byte*)vertexBuffer.Contents.ToPointer();
+        var indexDestination = (byte*)indexBuffer.Contents.ToPointer();
+
+        for (int listIndex = 0; listIndex < drawData.CmdListsCount; listIndex++)
+        {
+            var cmdList = drawData.CmdLists[listIndex];
+            listVertexOffsets[listIndex] = runningVertexOffset;
+            listIndexOffsets[listIndex] = runningIndexOffset;
+
+            long vertexWriteOffsetBytes = (long)runningVertexOffset * sizeof(ImDrawVert);
+            long vertexCopyBytes = (long)cmdList.VtxBuffer.Size * sizeof(ImDrawVert);
+            if (vertexCopyBytes > 0)
+            {
+                Buffer.MemoryCopy(cmdList.VtxBuffer.Data.ToPointer(), vertexDestination + vertexWriteOffsetBytes, vertexCopyBytes, vertexCopyBytes);
+            }
+
+            long indexWriteOffsetBytes = (long)runningIndexOffset * sizeof(ushort);
+            long indexCopyBytes = (long)cmdList.IdxBuffer.Size * sizeof(ushort);
+            if (indexCopyBytes > 0)
+            {
+                Buffer.MemoryCopy(cmdList.IdxBuffer.Data.ToPointer(), indexDestination + indexWriteOffsetBytes, indexCopyBytes, indexCopyBytes);
+            }
+
+            runningVertexOffset += cmdList.VtxBuffer.Size;
+            runningIndexOffset += cmdList.IdxBuffer.Size;
+        }
+
         var colorAttachment = _renderPassDescriptor.ColorAttachments.Object(0);
         colorAttachment.Texture = destination;
         colorAttachment.LoadAction = MTLLoadAction.Load;
         colorAttachment.StoreAction = MTLStoreAction.Store;
-        _renderPassDescriptor.ColorAttachments.SetObject(colorAttachment, 0);
 
         var encoder = commandBuffer.RenderCommandEncoder(_renderPassDescriptor);
+        encoder.BarrierAfterQueueStages(MTLStages.StageBlit, MTLStages.StageAll, MTL4VisibilityOptions.Device);
         encoder.Label = StringHelper.NSString("ImGui.Encoder");
         encoder.SetRenderPipelineState(_pipelineState);
         encoder.SetViewport(new MTLViewport
@@ -78,24 +157,18 @@ public sealed class ImGuiController
             znear = 0.0,
             zfar = 1.0
         });
-        encoder.SetFragmentSamplerState(_samplerState, 0);
-        SetProjectionMatrix(encoder, drawData);
+        SetProjectionMatrix(drawData);
+        _fragmentArgs.SetTexture(_fontTexture.GpuResourceID, 0);
+        _fragmentArgs.SetSamplerState(_samplerState.GpuResourceID, 0);
+        encoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
 
         var clipOff = drawData.DisplayPos;
         var clipScale = drawData.FramebufferScale;
-        var indexType = MTLIndexType.UInt16;
         const int indexSizeInBytes = sizeof(ushort);
 
         for (int listIndex = 0; listIndex < drawData.CmdListsCount; listIndex++)
         {
             var cmdList = drawData.CmdLists[listIndex];
-            ulong vertexBytes = (ulong)(cmdList.VtxBuffer.Size * sizeof(ImDrawVert));
-            ulong indexBytes = (ulong)(cmdList.IdxBuffer.Size * indexSizeInBytes);
-            var vertexBuffer = _device.NewBuffer(vertexBytes, MTLResourceOptions.ResourceStorageModeShared);
-            var indexBuffer = _device.NewBuffer(indexBytes, MTLResourceOptions.ResourceStorageModeShared);
-
-            Buffer.MemoryCopy(cmdList.VtxBuffer.Data.ToPointer(), vertexBuffer.Contents.ToPointer(), vertexBytes, vertexBytes);
-            Buffer.MemoryCopy(cmdList.IdxBuffer.Data.ToPointer(), indexBuffer.Contents.ToPointer(), indexBytes, indexBytes);
 
             for (int cmdIndex = 0; cmdIndex < cmdList.CmdBuffer.Size; cmdIndex++)
             {
@@ -134,23 +207,27 @@ public sealed class ImGuiController
                     height = scissorHeight
                 });
 
-                encoder.SetVertexBuffer(vertexBuffer, (ulong)(cmd.VtxOffset * sizeof(ImDrawVert)), 0);
+                ulong vertexOffsetBytes = (ulong)(listVertexOffsets[listIndex] + (int)cmd.VtxOffset) * (ulong)sizeof(ImDrawVert);
+                _vertexArgs.SetAddress(vertexBuffer.GpuAddress + vertexOffsetBytes, 0);
+                encoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
 
-                var drawTexture = _fontTexture;
-                encoder.SetFragmentTexture(drawTexture, 0);
+                ulong indexOffsetBytes = (ulong)(listIndexOffsets[listIndex] + (int)cmd.IdxOffset) * indexSizeInBytes;
+                ulong indexGpuAddress = indexBuffer.GpuAddress + indexOffsetBytes;
+                ulong indexBufferLength = indexBuffer.Length - indexOffsetBytes;
                 encoder.DrawIndexedPrimitives(
                     MTLPrimitiveType.Triangle,
-                    cmd.ElemCount,
-                    indexType,
-                    indexBuffer,
-                    cmd.IdxOffset * indexSizeInBytes);
+                    (ulong)cmd.ElemCount,
+                    MTLIndexType.UInt16,
+                    indexGpuAddress,
+                    indexBufferLength,
+                    1);
             }
         }
 
         encoder.EndEncoding();
     }
 
-    private unsafe void SetProjectionMatrix(MTLRenderCommandEncoder encoder, ImDrawDataPtr drawData)
+    private unsafe void SetProjectionMatrix(ImDrawDataPtr drawData)
     {
         float left = drawData.DisplayPos.X;
         float right = drawData.DisplayPos.X + drawData.DisplaySize.X;
@@ -164,7 +241,7 @@ public sealed class ImGuiController
             (right + left) / (left - right), (top + bottom) / (bottom - top), 0.5f, 1.0f);
 
         *(Matrix4x4*)_projectionBuffer.Contents = projection;
-        encoder.SetVertexBuffer(_projectionBuffer, 0, 1);
+        _vertexArgs.SetAddress(_projectionBuffer.GpuAddress, 1);
     }
 
     private static void UpdateInput(ImGuiIOPtr io, in FrameInput frameInput, float viewHeightPoints)
@@ -308,5 +385,56 @@ public sealed class ImGuiController
         io.Fonts.SetTexID(kImGuiTextureId);
         io.Fonts.ClearTexData();
         return texture;
+    }
+
+    private bool TrackStaticResidency(MTLResidencySet residencySet)
+    {
+        if (_trackedStaticResidency)
+        {
+            return false;
+        }
+
+        residencySet.AddAllocation(new MTLAllocation(_projectionBuffer.NativePtr));
+        residencySet.AddAllocation(new MTLAllocation(_fontTexture.NativePtr));
+        _trackedStaticResidency = true;
+        return true;
+    }
+
+    private bool EnsureBufferCapacity(int slot, ulong requiredBytes, bool vertexBuffer, MTLResidencySet residencySet)
+    {
+        if (requiredBytes == 0)
+        {
+            return false;
+        }
+
+        var buffers = vertexBuffer ? _vertexBuffers : _indexBuffers;
+        var current = buffers[slot];
+        if (current.NativePtr != nint.Zero && current.Length >= requiredBytes)
+        {
+            return false;
+        }
+
+        ulong startingSize = vertexBuffer ? kInitialVertexBufferSize : kInitialIndexBufferSize;
+        ulong targetSize = Math.Max(startingSize, requiredBytes);
+        if (current.NativePtr != nint.Zero)
+        {
+            targetSize = Math.Max(targetSize, current.Length * 2);
+        }
+
+        var replacement = _device.NewBuffer(targetSize, MTLResourceOptions.ResourceStorageModeShared);
+        replacement.Label = StringHelper.NSString(vertexBuffer ? $"ImGui.Vertex.Stream.{slot}" : $"ImGui.Index.Stream.{slot}");
+        buffers[slot] = replacement;
+        residencySet.AddAllocation(new MTLAllocation(replacement.NativePtr));
+        return true;
+    }
+
+    private static void ThrowIfArgumentTableCreationFailed(NSError error, string stage)
+    {
+        if (error.NativePtr == nint.Zero)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Failed creating ImGui {stage} argument table: {StringHelper.String(error.LocalizedDescription)}");
     }
 }

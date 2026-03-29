@@ -17,20 +17,20 @@ public struct DebugPresentData
 public class DebugPresentPass : IPass
 {
     private MTLDevice _device;
-    private MTLCommandQueue _queue;
     private readonly RenderingPipeline _pipeline;
 
     private readonly MTLRenderPipelineState _state;
     private readonly MTLBuffer _quadVertexBuffer;
     private readonly MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
-    private readonly MTLRenderPassDescriptor _renderPassDescriptor;
+    private readonly MTL4RenderPassDescriptor _renderPassDescriptor;
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
 
     public MTLTexture OutputTexture { get; private set; }
 
-    public DebugPresentPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline)
+    public DebugPresentPass(MTLDevice device, RenderingPipeline pipeline)
     {
         _device = device;
-        _queue = queue;
         _pipeline = pipeline;
 
         OutputTexture = CreateOutputTexture(pipeline.GBufferA.Width, pipeline.GBufferA.Height);
@@ -65,13 +65,30 @@ public class DebugPresentPass : IPass
             _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<DebugPresentData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
 
-        _renderPassDescriptor = new MTLRenderPassDescriptor();
+        NSError argsError = default;
+        _vertexArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 1,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false,
+        }, ref argsError);
+
+        argsError = default;
+        _fragmentArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 1,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 1,
+            SupportAttributeStrides = false,
+        }, ref argsError);
+
+        _renderPassDescriptor = new MTL4RenderPassDescriptor();
         var c0Attachment = _renderPassDescriptor.ColorAttachments.Object(0);
         c0Attachment.Texture = OutputTexture;
-        _renderPassDescriptor.ColorAttachments.SetObject(c0Attachment, 0);
     }
 
-    public void Execute(MTLCommandBuffer commandBuffer)
+    public void Execute(MTL4CommandBuffer commandBuffer)
     {
         if (!_pipeline.TryGetActiveBufferVisualization(out MTLTexture sourceTexture, out BufferVisualizationChannels channels))
         {
@@ -82,13 +99,14 @@ public class DebugPresentPass : IPass
         renderEncoder.Label = StringHelper.NSString("DebugPresentPass/Encoder");
 
         renderEncoder.SetRenderPipelineState(_state);
-        renderEncoder.SetVertexBuffer(_quadVertexBuffer, offset: 0, index: 0);
-        renderEncoder.UseResource(_quadVertexBuffer, MTLResourceUsage.Read);
+        _vertexArgs.SetAddress(_quadVertexBuffer.GpuAddress, 0);
+        renderEncoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
 
         var frameDataBuffer = _frameData[_pipeline.Frame];
         FillData(frameDataBuffer, channels);
-        renderEncoder.SetFragmentBuffer(frameDataBuffer, offset: 0, index: 0);
-        renderEncoder.SetFragmentTexture(sourceTexture, 0);
+        _fragmentArgs.SetAddress(frameDataBuffer.GpuAddress, 0);
+        _fragmentArgs.SetTexture(sourceTexture.GpuResourceID, 0);
+        renderEncoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
 
         renderEncoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 6);
         renderEncoder.EndEncoding();
@@ -128,6 +146,22 @@ public class DebugPresentPass : IPass
         var outputTexture = _device.NewTexture(outputTextureDescriptor);
         outputTexture.Label = StringHelper.NSString("DebugPresentPass.Output");
         return outputTexture;
+    }
+
+    public void AddResidencyAllocations(MTLResidencySet residencySet)
+    {
+        if (_quadVertexBuffer.NativePtr != nint.Zero)
+        {
+            residencySet.AddAllocation(new MTLAllocation(_quadVertexBuffer.NativePtr));
+        }
+
+        for (int i = 0; i < _frameData.Length; i++)
+        {
+            if (_frameData[i].NativePtr != nint.Zero)
+            {
+                residencySet.AddAllocation(new MTLAllocation(_frameData[i].NativePtr));
+            }
+        }
     }
 
     private MTLRenderPipelineState makeRenderPipelineState(string label, Action<MTLRenderPipelineDescriptor> block)

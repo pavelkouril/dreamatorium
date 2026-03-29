@@ -4,7 +4,7 @@ namespace Dreamatorium.Rendering;
 
 public interface IPass
 {
-    public void Execute(MTLCommandBuffer commandBuffer);
+    public void Execute(MTL4CommandBuffer commandBuffer);
 }
 
 public interface IPass<TSettings> : IPass

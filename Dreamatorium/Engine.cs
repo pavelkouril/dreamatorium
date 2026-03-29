@@ -70,23 +70,12 @@ public class Engine
         FrameInput cameraInput = frameInput.ConsumeCapturedInputs(captureState);
         _camera.ProcessInput(cameraInput);
 
-        bool hasRequestedFrameCapture = _appUi.TryConsumeFrameCaptureRequest();
+        bool hasRequestedFrameCapture = _appUi.TryConsumeFrameCaptureRequest() || frameInput.HasKeyEvent(KeyCode.P, KeyEventType.KeyDown);
         _frameCaptureController.BeginCaptureIfRequested(hasRequestedFrameCapture, frameInput.Frame);
 
         _pipeline.SetBufferVisualizationSelection(_appUi.SelectedBufferVisualizationKey);
 
-        var frameCommandBuffer = _pipeline.CreateFrameCommandBuffer("Frame Command Buffer");
-
-        _pipeline.Render(frameInput, frameCommandBuffer, currentDrawable.Texture.Width, currentDrawable.Texture.Height);
-
-        var blitEncoder = frameCommandBuffer.BlitCommandEncoder(new MTLBlitPassDescriptor());
-        blitEncoder.Label = StringHelper.NSString("Blit/Encoder");
-        blitEncoder.CopyFromTexture(_pipeline.FinalTexture, currentDrawable.Texture);
-        blitEncoder.EndEncoding();
-
-        _imGuiRenderPass.Render(frameInput, frameCommandBuffer, currentDrawable.Texture);
-        frameCommandBuffer.PresentDrawable(currentDrawable);
-        frameCommandBuffer.Commit();
+        _pipeline.Render(frameInput, currentDrawable, _imGuiRenderPass);
 
         _frameCaptureController.EndCaptureAndReveal();
     }

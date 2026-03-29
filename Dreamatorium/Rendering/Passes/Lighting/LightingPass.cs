@@ -25,28 +25,27 @@ public class LightingPass : IPass<LightingPassSettings>
     private readonly RenderingPipeline _pipeline;
     private readonly ShadowPass _shadowPass;
 
-    private MTLCommandQueue _queue;
-
     private MTLRenderPipelineState _state;
 
     private MTLBuffer quadVertexBuffer;
 
     private MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
 
     public MTLTexture OutputTexture { get; private set; }
 
-    private MTLRenderPassDescriptor _renderPassDescriptor;
+    private MTL4RenderPassDescriptor _renderPassDescriptor;
 
     public Vector3 LightDirection { get; set; }
 
     public LightingPassSettings Settings { get; } = new();
 
-    public LightingPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, ShadowPass shadowPass)
+    public LightingPass(MTLDevice device, RenderingPipeline pipeline, ShadowPass shadowPass)
     {
         _device = device;
         _pipeline = pipeline;
         _shadowPass = shadowPass;
-        _queue = queue;
 
         var outputTextureDescriptor = new MTLTextureDescriptor()
         {
@@ -93,29 +92,50 @@ public class LightingPass : IPass<LightingPassSettings>
             _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<LightingData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
 
-        _renderPassDescriptor = new MTLRenderPassDescriptor();
+        NSError argsError = default;
+        _vertexArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 1,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false,
+        }, ref argsError);
+
+        argsError = default;
+        _fragmentArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 2,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 4,
+            SupportAttributeStrides = false,
+        }, ref argsError);
+
+        _renderPassDescriptor = new MTL4RenderPassDescriptor();
         var c0 = _renderPassDescriptor.ColorAttachments.Object(0);
         c0.Texture = OutputTexture;
     }
 
-    public void Execute(MTLCommandBuffer commandBuffer)
+    public void Execute(MTL4CommandBuffer commandBuffer)
     {
         var renderEncoder = commandBuffer.RenderCommandEncoder(_renderPassDescriptor);
-
-        renderEncoder.Label = StringHelper.NSString("FullScreenPass/Encoder");
+        renderEncoder.Label = StringHelper.NSString("LightingPass/Encoder");
 
         renderEncoder.SetRenderPipelineState(_state);
         renderEncoder.SetCullMode(MTLCullMode.Back);
 
-        renderEncoder.SetVertexBuffer(quadVertexBuffer, offset: 0, index: 0);
-        renderEncoder.UseResource(quadVertexBuffer, MTLResourceUsage.Read);
+        _vertexArgs.SetAddress(quadVertexBuffer.GpuAddress, 0);
+        renderEncoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
 
-        renderEncoder.SetFragmentBuffer(_pipeline.CurrentFrameData, offset: 0, index: 0);
+        _fragmentArgs.SetAddress(_pipeline.CurrentFrameData.GpuAddress, 0);
         var frameDataBuffer = _frameData[_pipeline.Frame];
         FillData(frameDataBuffer);
-        renderEncoder.SetFragmentBuffer(frameDataBuffer, offset: 0, index: 1);
+        _fragmentArgs.SetAddress(frameDataBuffer.GpuAddress, 1);
 
-        BindFragmentInputs(renderEncoder);
+        _fragmentArgs.SetTexture(_pipeline.GBufferA.GpuResourceID, 0);
+        _fragmentArgs.SetTexture(_pipeline.GBufferB.GpuResourceID, 1);
+        _fragmentArgs.SetTexture(_pipeline.Depth.GpuResourceID, 2);
+        _fragmentArgs.SetTexture(_shadowPass.ShadowMap.GpuResourceID, 3);
+        renderEncoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
 
         renderEncoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 6);
 
@@ -154,6 +174,22 @@ public class LightingPass : IPass<LightingPassSettings>
         _renderPassDescriptor.ColorAttachments.SetObject(c0, 0);
     }
 
+    public void AddResidencyAllocations(MTLResidencySet residencySet)
+    {
+        if (quadVertexBuffer.NativePtr != nint.Zero)
+        {
+            residencySet.AddAllocation(new MTLAllocation(quadVertexBuffer.NativePtr));
+        }
+
+        for (int i = 0; i < _frameData.Length; i++)
+        {
+            if (_frameData[i].NativePtr != nint.Zero)
+            {
+                residencySet.AddAllocation(new MTLAllocation(_frameData[i].NativePtr));
+            }
+        }
+    }
+
     private MTLRenderPipelineState makeRenderPipelineState(string label, Action<MTLRenderPipelineDescriptor> block)
     {
         var descriptor = new MTLRenderPipelineDescriptor();
@@ -166,14 +202,6 @@ public class LightingPass : IPass<LightingPassSettings>
             Console.WriteLine(StringHelper.String(error.LocalizedDescription));
         }
         return state;
-    }
-
-    protected void BindFragmentInputs(MTLRenderCommandEncoder renderEncoder)
-    {
-        renderEncoder.SetFragmentTexture(_pipeline.GBufferA, 0);
-        renderEncoder.SetFragmentTexture(_pipeline.GBufferB, 1);
-        renderEncoder.SetFragmentTexture(_pipeline.Depth, 2);
-        renderEncoder.SetFragmentTexture(_shadowPass.ShadowMap, 3);
     }
 
     protected unsafe void FillData(MTLBuffer frameDataBuffer)

@@ -1,11 +1,12 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Reflection;
-using Dreamatorium.Input;
 using Dreamatorium.Rendering.Resources;
 using Dreamatorium.Scene;
 using Dreamatorium.Platforms.macOS;
+using SharpMetal.Foundation;
 using SharpMetal.Metal;
+using SharpMetal.QuartzCore;
 
 namespace Dreamatorium.Rendering;
 
@@ -72,8 +73,11 @@ public class RenderingPipeline
     private readonly Vector3 _mainLightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
 
     private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
+    private MTL4CommandBuffer[] _commandBuffers = new MTL4CommandBuffer[kMaxFramesInFlight];
+    private MTL4CommandAllocator[] _commandAllocators = new MTL4CommandAllocator[kMaxFramesInFlight];
 
-    private MTLCommandQueue _queue;
+    private MTL4CommandQueue _queue;
+    private MTLResidencySet _residencySet;
 
     private readonly Camera _camera;
 
@@ -86,32 +90,64 @@ public class RenderingPipeline
         _device = device;
         _camera = camera;
 
-        _queue = device.NewCommandQueue();
+        _queue = device.NewMTL4CommandQueue();
+        var residencySetDescriptor = new MTLResidencySetDescriptor
+        {
+            InitialCapacity = 4096,
+        };
+        NSError residencySetError = default;
+        _residencySet = _device.NewResidencySet(residencySetDescriptor, ref residencySetError);
+        if (residencySetError.NativePtr != nint.Zero)
+        {
+            throw new Exception($"Failed to create residency set. Reason: {StringHelper.String(residencySetError.LocalizedDescription)}");
+        }
+        _queue.AddResidencySet(_residencySet);
 
         CreateGBuffer(initialWidth, initialHeight);
 
-        _geometryPass = new GeometryPass(_device, _queue, this, scene, camera);
-        _shadowPass = new ShadowPass(_device, _queue, this, scene);
-        _lightingPass = new LightingPass(_device, _queue, this, _shadowPass);
-        _skyboxPass = new SkyboxPass(_device, _queue, this, skyboxTexture, _lightingPass);
-        _debugPresentPass = new DebugPresentPass(_device, _queue, this);
+        _geometryPass = new GeometryPass(_device, this, scene, camera);
+        _shadowPass = new ShadowPass(_device, this, scene);
+        _lightingPass = new LightingPass(_device, this, _shadowPass);
+        _skyboxPass = new SkyboxPass(_device, this, skyboxTexture, _lightingPass);
+        _debugPresentPass = new DebugPresentPass(_device, this);
         ConfigureBufferVisualizationOptions();
 
         for (int i = 0; i < _frameData.Length; i++)
         {
             _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeShared);
+            _commandBuffers[i] = device.NewCommandBuffer;
+            _commandBuffers[i].Label = StringHelper.NSString("Frame Command Buffer");
+            _commandAllocators[i] = device.NewCommandAllocator();
+            TrackAllocation(_frameData[i].NativePtr);
         }
+
+        RegisterSceneResidency(scene);
+        _geometryPass.AddResidencyAllocations(_residencySet);
+        _debugPresentPass.AddResidencyAllocations(_residencySet);
+        _lightingPass.AddResidencyAllocations(_residencySet);
+        _skyboxPass.AddResidencyAllocations(_residencySet);
+        _shadowPass.AddResidencyAllocations(_residencySet);
+        RegisterPipelineTextureResidency();
+        _residencySet.Commit();
     }
 
-    public void Render(in FrameInput frameInput, MTLCommandBuffer commandBuffer, ulong targetWidth, ulong targetHeight)
+    public void Render(in FrameInput frameInput, CAMetalDrawable currentDrawable, ImGuiRenderPass imGuiRenderPass)
     {
-        if (targetWidth != GBufferA.Width || targetHeight != GBufferA.Height)
+        if (currentDrawable.Texture.Width != GBufferA.Width || currentDrawable.Texture.Height != GBufferA.Height)
         {
-            Resize(targetWidth, targetHeight);
+            Resize(currentDrawable.Texture.Width , currentDrawable.Texture.Height);
         }
 
         Frame = (Frame + 1) % kMaxFramesInFlight;
+        TrackAllocation(currentDrawable.Texture.NativePtr);
+        _residencySet.Commit();
+
         var frameDataBuffer = _frameData[Frame];
+        var commandBuffer = _commandBuffers[Frame];
+        var commandAllocator = _commandAllocators[Frame];
+        commandAllocator.Reset();
+        commandBuffer.BeginCommandBuffer(commandAllocator);
+
         unsafe
         {
             FrameData* pFrameData = (FrameData*)frameDataBuffer.Contents.ToPointer();
@@ -153,17 +189,35 @@ public class RenderingPipeline
             _renderPasses.Add(_debugPresentPass);
         }
 
-        foreach (var pass in _renderPasses)
+        for (int passIndex = 0; passIndex < _renderPasses.Count; passIndex++)
         {
+            var pass = _renderPasses[passIndex];
             pass.Execute(commandBuffer);
-        }
-    }
 
-    public MTLCommandBuffer CreateFrameCommandBuffer(string label)
-    {
-        var commandBuffer = _queue.CommandBuffer();
-        commandBuffer.Label = StringHelper.NSString(label);
-        return commandBuffer;
+            if (passIndex < _renderPasses.Count - 1)
+            {
+                var barrierEncoder = commandBuffer.ComputeCommandEncoder;
+                barrierEncoder.Label = StringHelper.NSString("Temporary Pass Barrier");
+                barrierEncoder.BarrierAfterQueueStages(MTLStages.StageAll, MTLStages.StageAll, MTL4VisibilityOptions.Device);
+                barrierEncoder.EndEncoding();
+            }
+        }
+
+        var blitEncoder = commandBuffer.ComputeCommandEncoder;
+        blitEncoder.BarrierAfterQueueStages(MTLStages.StageFragment, MTLStages.StageBlit, MTL4VisibilityOptions.Device);
+        blitEncoder.Label = StringHelper.NSString("Copy From Texture");
+        blitEncoder.CopyFromTexture(FinalTexture, currentDrawable.Texture);
+        blitEncoder.EndEncoding();
+
+        imGuiRenderPass.Render(frameInput, commandBuffer, currentDrawable.Texture, _residencySet, Frame);
+        _residencySet.Commit();
+
+        commandBuffer.EndCommandBuffer();
+        _queue.Wait(currentDrawable);
+        _queue.Commit([commandBuffer], 1);
+        _queue.SignalDrawable(currentDrawable);
+
+        currentDrawable.Present();
     }
 
     public void SetBufferVisualizationSelection(string key)
@@ -265,6 +319,47 @@ public class RenderingPipeline
         CreateGBuffer(width, height);
         _lightingPass.Resize(width, height);
         _debugPresentPass.Resize(width, height);
+        RegisterPipelineTextureResidency();
+        _residencySet.Commit();
+    }
+
+    private void RegisterSceneResidency(List<Mesh> scene)
+    {
+        foreach (var mesh in scene)
+        {
+            TrackAllocation(mesh._vertexPositionsBuffer.NativePtr);
+            TrackAllocation(mesh._vertexNormalsBuffer.NativePtr);
+            TrackAllocation(mesh._vertexTangentsBuffer.NativePtr);
+            TrackAllocation(mesh._vertexBitangentsBuffer.NativePtr);
+            TrackAllocation(mesh._vertexTextureCoordinatesBuffer.NativePtr);
+            TrackAllocation(mesh._indexBuffer.NativePtr);
+            TrackAllocation(mesh.Material.Albedo.NativePtr);
+            TrackAllocation(mesh.Material.Normals.NativePtr);
+            TrackAllocation(mesh.Material.Opacity.NativePtr);
+            TrackAllocation(mesh.Material.Roughness.NativePtr);
+            TrackAllocation(mesh.Material.Metalness.NativePtr);
+        }
+    }
+
+    private void RegisterPipelineTextureResidency()
+    {
+        TrackAllocation(GBufferA.NativePtr);
+        TrackAllocation(GBufferB.NativePtr);
+        TrackAllocation(GBufferDepth.NativePtr);
+        TrackAllocation(Depth.NativePtr);
+        TrackAllocation(_lightingPass.OutputTexture.NativePtr);
+        TrackAllocation(_debugPresentPass.OutputTexture.NativePtr);
+        TrackAllocation(_shadowPass.ShadowMap.NativePtr);
+    }
+
+    private void TrackAllocation(nint allocationPtr)
+    {
+        if (allocationPtr == nint.Zero)
+        {
+            return;
+        }
+
+        _residencySet.AddAllocation(new MTLAllocation(allocationPtr));
     }
 
     private static void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)

@@ -12,19 +12,19 @@ public class ShadowPass : IPass
     private const ulong kShadowMapSize = 2048;
     private readonly RenderingPipeline _pipeline;
     private readonly List<Resources_Mesh> _scene;
-    private MTLCommandQueue _queue;
-    private readonly MTLRenderPassDescriptor _shadowPassDescriptor;
+    private readonly MTL4RenderPassDescriptor _shadowPassDescriptor;
     private readonly MTLRenderPipelineState _shadowPipelineState;
     private readonly MTLDepthStencilState _shadowDepthStencilState;
     private readonly MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
 
     public MTLTexture ShadowMap { get; private set; }
 
-    public ShadowPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, List<Resources_Mesh> scene)
+    public ShadowPass(MTLDevice device, RenderingPipeline pipeline, List<Resources_Mesh> scene)
     {
         _pipeline = pipeline;
         _scene = scene;
-        _queue = queue;
 
         var shadowTextureDescriptor = new MTLTextureDescriptor()
         {
@@ -79,7 +79,7 @@ public class ShadowPass : IPass
         };
         _shadowDepthStencilState = device.NewDepthStencilState(shadowDepthDescriptor);
 
-        _shadowPassDescriptor = new MTLRenderPassDescriptor();
+        _shadowPassDescriptor = new MTL4RenderPassDescriptor();
         _shadowPassDescriptor.DepthAttachment = new MTLRenderPassDepthAttachmentDescriptor
         {
             LoadAction = MTLLoadAction.Clear,
@@ -92,9 +92,27 @@ public class ShadowPass : IPass
         {
             _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
+
+        NSError argsError = default;
+        _vertexArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 6,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false,
+        }, ref argsError);
+
+        argsError = default;
+        _fragmentArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 0,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 1,
+            SupportAttributeStrides = false,
+        }, ref argsError);
     }
 
-    public void Execute(MTLCommandBuffer commandBuffer)
+    public void Execute(MTL4CommandBuffer commandBuffer)
     {
         var renderEncoder = commandBuffer.RenderCommandEncoder(_shadowPassDescriptor);
         renderEncoder.Label = StringHelper.NSString("ShadowPass.Encoder");
@@ -123,28 +141,41 @@ public class ShadowPass : IPass
             pFrameData->ProjectionMatrix = pipelineFrameData->LightProjectionMatrix;
         }
 
-        renderEncoder.SetVertexBuffer(frameDataBuffer, offset: 0, index: 5);
+        _vertexArgs.SetAddress(frameDataBuffer.GpuAddress, 5);
 
         foreach (var matGrouping in _scene.GroupBy(x => x.Material.Index))
         {
             var material = matGrouping.First().Material;
-            renderEncoder.SetFragmentTexture(material.Opacity, 0);
+            _fragmentArgs.SetTexture(material.Opacity.GpuResourceID, 0);
+            renderEncoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
 
             foreach (var mesh in matGrouping)
             {
-                renderEncoder.SetVertexBuffer(mesh._vertexPositionsBuffer, offset: 0, index: 0);
-                renderEncoder.SetVertexBuffer(mesh._vertexTextureCoordinatesBuffer, offset: 0, index: 4);
+                _vertexArgs.SetAddress(mesh._vertexPositionsBuffer.GpuAddress, 0);
+                _vertexArgs.SetAddress(mesh._vertexTextureCoordinatesBuffer.GpuAddress, 4);
+                renderEncoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
 
                 renderEncoder.DrawIndexedPrimitives(primitiveType: MTLPrimitiveType.Triangle,
                     indexCount: mesh._indexBuffer.Length / 4,
                     indexType: MTLIndexType.UInt32,
-                    indexBuffer: mesh._indexBuffer,
-                    indexBufferOffset: 0,
+                    indexBuffer: mesh._indexBuffer.GpuAddress,
+                    indexBufferLength: mesh._indexBuffer.Length,
                     instanceCount: 1);
             }
         }
 
         renderEncoder.EndEncoding();
+    }
+
+    public void AddResidencyAllocations(MTLResidencySet residencySet)
+    {
+        for (int i = 0; i < _frameData.Length; i++)
+        {
+            if (_frameData[i].NativePtr != nint.Zero)
+            {
+                residencySet.AddAllocation(new MTLAllocation(_frameData[i].NativePtr));
+            }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential)]

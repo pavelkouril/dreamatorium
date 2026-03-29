@@ -21,9 +21,9 @@ public sealed class ImGuiRenderPass
         return _imGuiController.BeginFrame(frameInput, destinationTexture.Width, destinationTexture.Height, view.BackingScaleFactor);
     }
 
-    public void Render(in FrameInput frameInput, MTLCommandBuffer commandBuffer, MTLTexture destinationTexture)
+    public void Render(in FrameInput frameInput, MTL4CommandBuffer commandBuffer, MTLTexture destinationTexture, MTLResidencySet residencySet, int frameIndex)
     {
         _ui.Draw(frameInput);
-        _imGuiController.Render(commandBuffer, destinationTexture);
+        _imGuiController.Render(commandBuffer, destinationTexture, residencySet, frameIndex);
     }
 }

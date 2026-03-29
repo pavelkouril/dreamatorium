@@ -13,24 +13,25 @@ public class GeometryPass : IPass<GeometryPassSettings>
     private readonly RenderingPipeline _pipeline;
     private readonly List<Resources_Mesh> _scene;
     private readonly Camera _camera;
-    private MTLCommandQueue _queue;
     private MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
 
-    private MTLRenderPassDescriptor _gBufferPassDescriptor;
+    private MTL4RenderPassDescriptor _gBufferPassDescriptor;
 
     public MTLRenderPipelineState _gBufferGenerationPipelineState;
     public MTLDepthStencilState _gBufferGenerationDepthStencilState;
 
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
+
     public GeometryPassSettings Settings { get; } = new();
 
-    public GeometryPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
+    public GeometryPass(MTLDevice device, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
     {
         _pipeline = pipeline;
         _scene = scene;
         _camera = camera;
-        _queue = queue;
 
-        _gBufferPassDescriptor = new MTLRenderPassDescriptor();
+        _gBufferPassDescriptor = new MTL4RenderPassDescriptor();
         _gBufferPassDescriptor.DepthAttachment = new MTLRenderPassDepthAttachmentDescriptor()
         {
             LoadAction = MTLLoadAction.Clear,
@@ -61,6 +62,19 @@ public class GeometryPass : IPass<GeometryPassSettings>
         {
             _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<FrameData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
+
+        var atDesc = new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 6, // pos, norm, tan, bitan, uv, frameData
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false
+        };
+        NSError err = default;
+        _vertexArgs = device.NewArgumentTable(atDesc, ref err);
+
+        atDesc.MaxBufferBindCount = 0;
+        atDesc.MaxTextureBindCount = 5; // albedo, normals, opacity, roughness, metalness
+        _fragmentArgs = device.NewArgumentTable(atDesc, ref err);
     }
 
     private static void SetPixelFormat(MTLRenderPipelineDescriptor descriptor, ulong index, MTLPixelFormat pixelFormat)
@@ -70,7 +84,7 @@ public class GeometryPass : IPass<GeometryPassSettings>
         descriptor.ColorAttachments.SetObject(attach, index);
     }
 
-    public void Execute(MTLCommandBuffer commandBuffer)
+    public void Execute(MTL4CommandBuffer commandBuffer)
     {
         var cA0 = _gBufferPassDescriptor.ColorAttachments.Object(0);
         cA0.Texture = _pipeline.GBufferA;
@@ -104,8 +118,7 @@ public class GeometryPass : IPass<GeometryPassSettings>
 
         renderEncoder.PushDebugGroup(StringHelper.NSString("Set Frame Data"));
 
-        renderEncoder.SetVertexBuffer(frameDataBuffer, offset: 0, index: 5);
-        renderEncoder.SetFragmentBuffer(frameDataBuffer, offset: 0, index: 5);
+        _vertexArgs.SetAddress(frameDataBuffer.GpuAddress, 5);
 
         renderEncoder.PopDebugGroup();
 
@@ -114,27 +127,31 @@ public class GeometryPass : IPass<GeometryPassSettings>
             renderEncoder.PushDebugGroup(StringHelper.NSString($"Material {matGrouping.Key}"));
 
             var material = matGrouping.First().Material;
-            renderEncoder.SetFragmentTexture(material.Albedo, 0);
-            renderEncoder.SetFragmentTexture(material.Normals, 1);
-            renderEncoder.SetFragmentTexture(material.Opacity, 2);
-            renderEncoder.SetFragmentTexture(material.Roughness, 3);
-            renderEncoder.SetFragmentTexture(material.Metalness, 4);
+            _fragmentArgs.SetTexture(material.Albedo.GpuResourceID, 0);
+            _fragmentArgs.SetTexture(material.Normals.GpuResourceID, 1);
+            _fragmentArgs.SetTexture(material.Opacity.GpuResourceID, 2);
+            _fragmentArgs.SetTexture(material.Roughness.GpuResourceID, 3);
+            _fragmentArgs.SetTexture(material.Metalness.GpuResourceID, 4);
+
+            renderEncoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
 
             foreach (var mesh in matGrouping)
             {
                 renderEncoder.PushDebugGroup(StringHelper.NSString($"Draw {mesh.Name}"));
 
-                renderEncoder.SetVertexBuffer(mesh._vertexPositionsBuffer, offset: 0, 0);
-                renderEncoder.SetVertexBuffer(mesh._vertexNormalsBuffer, offset: 0, 1);
-                renderEncoder.SetVertexBuffer(mesh._vertexTangentsBuffer, offset: 0, 2);
-                renderEncoder.SetVertexBuffer(mesh._vertexBitangentsBuffer, offset: 0, 3);
-                renderEncoder.SetVertexBuffer(mesh._vertexTextureCoordinatesBuffer, offset: 0, 4);
+                _vertexArgs.SetAddress(mesh._vertexPositionsBuffer.GpuAddress, 0);
+                _vertexArgs.SetAddress(mesh._vertexNormalsBuffer.GpuAddress, 1);
+                _vertexArgs.SetAddress(mesh._vertexTangentsBuffer.GpuAddress, 2);
+                _vertexArgs.SetAddress(mesh._vertexBitangentsBuffer.GpuAddress, 3);
+                _vertexArgs.SetAddress(mesh._vertexTextureCoordinatesBuffer.GpuAddress, 4);
+
+                renderEncoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
 
                 renderEncoder.DrawIndexedPrimitives(primitiveType: MTLPrimitiveType.Triangle,
                     indexCount: mesh._indexBuffer.Length / 4,
                     indexType: MTLIndexType.UInt32,
-                    indexBuffer: mesh._indexBuffer,
-                    indexBufferOffset: 0,
+                    indexBuffer: mesh._indexBuffer.GpuAddress,
+                    indexBufferLength: mesh._indexBuffer.Length,
                     instanceCount: 1);
 
                 renderEncoder.PopDebugGroup();
@@ -144,6 +161,17 @@ public class GeometryPass : IPass<GeometryPassSettings>
         }
 
         renderEncoder.EndEncoding();
+    }
+
+    public void AddResidencyAllocations(MTLResidencySet residencySet)
+    {
+        for (int i = 0; i < _frameData.Length; i++)
+        {
+            if (_frameData[i].NativePtr != nint.Zero)
+            {
+                residencySet.AddAllocation(new MTLAllocation(_frameData[i].NativePtr));
+            }
+        }
     }
 
     private MTLRenderPipelineState makeRenderPipelineState(MTLDevice device, string label, Action<MTLRenderPipelineDescriptor> block)

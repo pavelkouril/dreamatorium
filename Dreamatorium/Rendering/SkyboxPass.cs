@@ -8,22 +8,21 @@ public class SkyboxPass : IPass
 {
     private MTLDevice _device;
 
-    private MTLCommandQueue _queue;
-
     private readonly RenderingPipeline _pipeline;
     private readonly LightingPass _lightingPass;
 
     private MTLTexture _skyboxTexture;
 
-    private MTLRenderPassDescriptor _skyboxPassDescriptor;
+    private MTL4RenderPassDescriptor _skyboxPassDescriptor;
 
     private MTLRenderPipelineState _skyboxPipelineState;
     private MTLDepthStencilState _skyboxDepthStencilState;
+    private MTL4ArgumentTable _vertexArgs;
+    private MTL4ArgumentTable _fragmentArgs;
 
-    public SkyboxPass(MTLDevice device, MTLCommandQueue queue, RenderingPipeline pipeline, MTLTexture skyboxTexture, LightingPass lightingPass)
+    public SkyboxPass(MTLDevice device, RenderingPipeline pipeline, MTLTexture skyboxTexture, LightingPass lightingPass)
     {
         _device = device;
-        _queue = queue;
         _pipeline = pipeline;
         _lightingPass = lightingPass;
         _skyboxTexture = skyboxTexture;
@@ -46,7 +45,25 @@ public class SkyboxPass : IPass
             c0.PixelFormat = MTLPixelFormat.RGBA8Unorm;
         });
 
-        _skyboxPassDescriptor = new MTLRenderPassDescriptor();
+        NSError argumentTableError = default;
+        _vertexArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 1,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 0,
+            SupportAttributeStrides = false,
+        }, ref argumentTableError);
+
+        argumentTableError = default;
+        _fragmentArgs = device.NewArgumentTable(new MTL4ArgumentTableDescriptor
+        {
+            MaxBufferBindCount = 0,
+            MaxSamplerStateBindCount = 0,
+            MaxTextureBindCount = 1,
+            SupportAttributeStrides = false,
+        }, ref argumentTableError);
+
+        _skyboxPassDescriptor = new MTL4RenderPassDescriptor();
         var c0 = _skyboxPassDescriptor.ColorAttachments.Object(0);
         c0.Texture = lightingPass.OutputTexture;
         c0.LoadAction = MTLLoadAction.Load;
@@ -59,24 +76,32 @@ public class SkyboxPass : IPass
         dA.Texture = _pipeline.Depth;
     }
 
-    public void Execute(MTLCommandBuffer commandBuffer)
+    public void Execute(MTL4CommandBuffer commandBuffer)
     {
         var c0 = _skyboxPassDescriptor.ColorAttachments.Object(0);
         c0.Texture = _lightingPass.OutputTexture;
-        _skyboxPassDescriptor.ColorAttachments.SetObject(c0, 0);
 
         var dA = _skyboxPassDescriptor.DepthAttachment;
         dA.Texture = _pipeline.Depth;
-        _skyboxPassDescriptor.DepthAttachment = dA;
 
         var renderEncoder = commandBuffer.RenderCommandEncoder(_skyboxPassDescriptor);
         renderEncoder.SetRenderPipelineState(_skyboxPipelineState);
         renderEncoder.SetDepthStencilState(_skyboxDepthStencilState);
         renderEncoder.SetCullMode(MTLCullMode.Front);
-        renderEncoder.SetVertexBuffer(_pipeline.CurrentFrameData, offset: 0, index: 0);
-        renderEncoder.SetFragmentTexture(_skyboxTexture, 0);
+        _vertexArgs.SetAddress(_pipeline.CurrentFrameData.GpuAddress, 0);
+        renderEncoder.SetArgumentTable(_vertexArgs, MTLRenderStages.RenderStageVertex);
+        _fragmentArgs.SetTexture(_skyboxTexture.GpuResourceID, 0);
+        renderEncoder.SetArgumentTable(_fragmentArgs, MTLRenderStages.RenderStageFragment);
         renderEncoder.DrawPrimitives(MTLPrimitiveType.Triangle, 0, 36);
         renderEncoder.EndEncoding();
+    }
+
+    public void AddResidencyAllocations(MTLResidencySet residencySet)
+    {
+        if (_skyboxTexture.NativePtr != nint.Zero)
+        {
+            residencySet.AddAllocation(new MTLAllocation(_skyboxTexture.NativePtr));
+        }
     }
 
     private MTLRenderPipelineState MakeRenderPipelineState(string label, Action<MTLRenderPipelineDescriptor> block)
