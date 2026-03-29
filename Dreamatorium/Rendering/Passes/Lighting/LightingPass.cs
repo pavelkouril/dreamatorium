@@ -85,17 +85,12 @@ public class LightingPass : IPass<LightingPassSettings>
         };
 
         var quadBufferSize = (ulong)(quadVertices.Length * Marshal.SizeOf<Vector2>());
-        quadVertexBuffer = device.NewBuffer(quadBufferSize, MTLResourceOptions.ResourceStorageModeManaged);
+        quadVertexBuffer = device.NewBuffer(quadBufferSize, MTLResourceOptions.ResourceStorageModeShared);
         quadVertices.CopyToBuffer(quadVertexBuffer);
-        quadVertexBuffer.DidModifyRange(new NSRange()
-        {
-            location = 0,
-            length = quadBufferSize,
-        });
 
         for (int i = 0; i < _frameData.Length; i++)
         {
-            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<LightingData>(), MTLResourceOptions.ResourceStorageModeManaged);
+            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<LightingData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
 
         _renderPassDescriptor = new MTLRenderPassDescriptor();
@@ -188,10 +183,5 @@ public class LightingPass : IPass<LightingPassSettings>
         pData->ColorIntensity = new Vector4(1, 1, 1, 25);
         pData->Type = 0;
         pData->Direction = LightDirection.AsVector4();
-        frameDataBuffer.DidModifyRange(new NSRange
-        {
-            location = 0,
-            length = (ulong)Marshal.SizeOf<LightingData>()
-        });
     }
 }

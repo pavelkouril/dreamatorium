@@ -57,17 +57,12 @@ public class DebugPresentPass : IPass
         };
 
         var quadBufferSize = (ulong)(quadVertices.Length * Marshal.SizeOf<System.Numerics.Vector2>());
-        _quadVertexBuffer = device.NewBuffer(quadBufferSize, MTLResourceOptions.ResourceStorageModeManaged);
+        _quadVertexBuffer = device.NewBuffer(quadBufferSize, MTLResourceOptions.ResourceStorageModeShared);
         quadVertices.CopyToBuffer(_quadVertexBuffer);
-        _quadVertexBuffer.DidModifyRange(new NSRange
-        {
-            location = 0,
-            length = quadBufferSize,
-        });
 
         for (int i = 0; i < _frameData.Length; i++)
         {
-            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<DebugPresentData>(), MTLResourceOptions.ResourceStorageModeManaged);
+            _frameData[i] = device.NewBuffer((ulong)Marshal.SizeOf<DebugPresentData>(), MTLResourceOptions.ResourceStorageModeShared);
         }
 
         _renderPassDescriptor = new MTLRenderPassDescriptor();
@@ -153,10 +148,5 @@ public class DebugPresentPass : IPass
     {
         DebugPresentData* pData = (DebugPresentData*)frameDataBuffer.Contents.ToPointer();
         pData->ChannelMode = channels == BufferVisualizationChannels.A ? 1u : 0u;
-        frameDataBuffer.DidModifyRange(new NSRange
-        {
-            location = 0,
-            length = (ulong)Marshal.SizeOf<DebugPresentData>(),
-        });
     }
 }
