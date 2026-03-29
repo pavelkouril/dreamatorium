@@ -70,7 +70,7 @@ public class RenderingPipeline
     private readonly SkyboxPass _skyboxPass;
     private readonly DebugPresentPass _debugPresentPass;
     private readonly ShadowPass _shadowPass;
-    private readonly Vector3 _mainLightDirection = Vector3.Normalize(new Vector3(-1, 1, 1));
+    private readonly Vector3 _mainLightDirection = Vector3.Normalize(new Vector3(-0.35f, 0.92f, 0.18f));
 
     private MTLBuffer[] _frameData = new MTLBuffer[kMaxFramesInFlight];
     private MTL4CommandBuffer[] _commandBuffers = new MTL4CommandBuffer[kMaxFramesInFlight];
@@ -80,6 +80,7 @@ public class RenderingPipeline
     private MTLResidencySet _residencySet;
 
     private readonly Camera _camera;
+    private readonly Scene _scene;
 
     public MTLTexture FinalTexture => HasActiveBufferVisualization ? _debugPresentPass.OutputTexture : _lightingPass.OutputTexture;
 
@@ -89,6 +90,7 @@ public class RenderingPipeline
     {
         _device = device;
         _camera = camera;
+        _scene = scene;
 
         _queue = device.NewMTL4CommandQueue();
         var residencySetDescriptor = new MTLResidencySetDescriptor
@@ -362,21 +364,24 @@ public class RenderingPipeline
         _residencySet.AddAllocation(new MTLAllocation(allocationPtr));
     }
 
-    private static void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)
+    private void BuildDirectionalLightMatrices(Vector3 lightDirection, out Matrix4x4 lightView, out Matrix4x4 lightProjection)
     {
-        // World-anchored directional light setup to keep shadows stable when camera moves.
-        float distanceFromCenter = 120.0f;
-        float orthoWidth = 240.0f;
-        float orthoHeight = 240.0f;
-        float nearPlane = 1.0f;
-        float farPlane = 600.0f;
+        Vector3 normalizedDirection = Vector3.Normalize(lightDirection);
+        float sceneRadius = MathF.Max(_scene.SceneBounds.Extents.Length(), 1.0f);
 
-        Vector3 target = Vector3.Zero;
-        Vector3 lightPos = target + lightDirection * distanceFromCenter;
-        Vector3 up = MathF.Abs(Vector3.Dot(Vector3.UnitY, lightDirection)) > 0.99f ? Vector3.UnitZ : Vector3.UnitY;
+        float xyPadding = MathF.Max(8.0f, sceneRadius * 0.15f);
+        float zPadding = MathF.Max(16.0f, sceneRadius * 0.25f);
+        float distanceFromCenter = sceneRadius + zPadding;
 
-        lightView = Matrix4x4.CreateLookAtLeftHanded(lightPos, target, up);
-        lightProjection = Matrix4x4.CreateOrthographicLeftHanded(orthoWidth, orthoHeight, nearPlane, farPlane);
+        Vector3 lightPos = _scene.SceneBounds.Center + normalizedDirection * distanceFromCenter;
+        Vector3 up = MathF.Abs(Vector3.Dot(Vector3.UnitY, normalizedDirection)) > 0.99f ? Vector3.UnitZ : Vector3.UnitY;
+        lightView = Matrix4x4.CreateLookAtLeftHanded(lightPos, _scene.SceneBounds.Center, up);
+
+        // Conservative sphere fit around scene bounds to avoid matrix-convention errors while guaranteeing coverage.
+        float orthoSize = (sceneRadius + xyPadding) * 2.0f;
+        float nearPlane = MathF.Max(0.1f, distanceFromCenter - sceneRadius - zPadding);
+        float farPlane = distanceFromCenter + sceneRadius + zPadding;
+        lightProjection = Matrix4x4.CreateOrthographicLeftHanded(orthoSize, orthoSize, nearPlane, MathF.Max(farPlane, nearPlane + 1.0f));
     }
 
     private void ConfigureBufferVisualizationOptions()
