@@ -21,7 +21,7 @@ vertex QuadSimpleOut quad_vs(constant FullScreenVertexInput * vertices [[ buffer
     return out;
 }
 
-fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameData & frameData [[ buffer(0) ]], constant LightingData & lightingData [[ buffer(1) ]], texture2d<float> gBufferA [[ texture(0) ]], texture2d<float> gBufferB [[ texture(1) ]], depth2d<float> gBufferDepth [[ texture(2) ]], depth2d<float> shadowMap [[ texture(3) ]])
+fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameData & frameData [[ buffer(0) ]], constant LightingData & lightingData [[ buffer(1) ]], texture2d<float> gBufferA [[ texture(0) ]], texture2d<float> gBufferB [[ texture(1) ]], depth2d<float> gBufferDepth [[ texture(2) ]], texture2d<float> shadowMask [[ texture(3) ]])
 {
     constexpr sampler linearSampler(mip_filter::linear, mag_filter::linear, min_filter::linear);
 
@@ -39,24 +39,7 @@ fragment float4 lighting_frag(QuadSimpleOut in [[ stage_in ]], constant FrameDat
    float3 N = normalize(gbufferBSample.rgb);
    float3 V = normalize(frameData.camera_position.xyz - positionWS);
 
-    float4 lightClipPosition = frameData.light_projection_matrix * frameData.light_view_matrix * float4(positionWS, 1.0);
-    float3 lightNdc = lightClipPosition.xyz / max(lightClipPosition.w, 1e-5);
-    float2 shadowUv = float2(lightNdc.x * 0.5 + 0.5, (1.0 - lightNdc.y) * 0.5);
-    float currentLightDepth = lightNdc.z;
-
-    constexpr sampler shadowSampler(mip_filter::linear, mag_filter::linear, min_filter::linear, address::clamp_to_edge);
-
-    float directionalShadow = 1.0;
-    bool insideShadowMap = shadowUv.x > 0.0 && shadowUv.x < 1.0 && shadowUv.y > 0.0 && shadowUv.y < 1.0;
-    bool insideShadowDepth = currentLightDepth > 0.0 && currentLightDepth < 1.0;
-    float closestDepth = 1.0;
-    if (insideShadowMap && insideShadowDepth)
-    {
-        closestDepth = shadowMap.sample(shadowSampler, shadowUv);
-        float NdotL = max(dot(N, normalize(lightingData.direction.xyz)), 0.0);
-        float bias = max(0.002 * (1.0 - NdotL), 0.0005);
-        directionalShadow = (currentLightDepth - bias) > closestDepth ? 0.0 : 1.0;
-    }
+    float directionalShadow = shadowMask.sample(linearSampler, in.tex_coord).r;
 
     float3 color = calculateLighting(albedo, metallic, roughness, positionWS, N, V, &lightingData, 1, directionalShadow);
 

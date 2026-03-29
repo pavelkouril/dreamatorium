@@ -181,6 +181,7 @@ public class RenderingPipeline
         _renderPasses.Clear();
         _renderPasses.Add(_geometryPass);
 
+        _shadowPass.LightDirection = _mainLightDirection;
         _lightingPass.LightDirection = _mainLightDirection;
 
         _renderPasses.Add(_shadowPass);
@@ -319,6 +320,7 @@ public class RenderingPipeline
         }
 
         CreateGBuffer(width, height);
+        _shadowPass.Resize(width, height);
         _lightingPass.Resize(width, height);
         _debugPresentPass.Resize(width, height);
         RegisterPipelineTextureResidency();
