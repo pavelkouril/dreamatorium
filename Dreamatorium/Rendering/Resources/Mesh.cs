@@ -1,7 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Dreamatorium.Platforms.macOS;
-using SharpMetal.Foundation;
 using SharpMetal.Metal;
 
 namespace Dreamatorium.Rendering.Resources;
@@ -20,15 +19,11 @@ public class Mesh(string name, Material material)
 
     public string Name { get; private set; } = name;
 
-    public static Mesh FromAssimpMesh(Assimp.Mesh mesh, Material material, MTLDevice device, float importScale = 1.0f)
+    public Bounds Bounds { get; private set; }
+
+    public static Mesh FromAssimpMesh(Assimp.Mesh mesh, Material material, MTLDevice device)
     {
         var rv = new Mesh(mesh.Name, material);
-        var scaledPositions = new List<Vector3>(mesh.VertexCount);
-        for (int i = 0; i < mesh.VertexCount; i++)
-        {
-            var position = mesh.Vertices[i];
-            scaledPositions.Add(new Vector3(position.X * importScale, position.Y * importScale, position.Z * importScale));
-        }
 
         var positionsDataSize = (ulong)(mesh.VertexCount * Marshal.SizeOf<Vector3>());
         var normalsDataSize = (ulong)(mesh.VertexCount * Marshal.SizeOf<Vector3>());
@@ -37,6 +32,8 @@ public class Mesh(string name, Material material)
         var textureCoordsDataSize = (ulong)(mesh.VertexCount * Marshal.SizeOf<Vector3>());
         var indices = mesh.GetUnsignedIndices().ToList();
         var indexBufferSize = (ulong)(indices.Count * Marshal.SizeOf<uint>());
+
+        rv.Bounds = new Bounds(mesh.BoundingBox.Min, mesh.BoundingBox.Max);
 
         rv._vertexPositionsBuffer = device.NewBuffer(positionsDataSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._vertexPositionsBuffer.Label = StringHelper.NSString($"{mesh.Name}/Positions");
@@ -51,7 +48,7 @@ public class Mesh(string name, Material material)
         rv._indexBuffer = device.NewBuffer(indexBufferSize, MTLResourceOptions.ResourceStorageModeShared);
         rv._indexBuffer.Label = StringHelper.NSString($"{mesh.Name}/IndexBuffer");
 
-        LoadData(scaledPositions, rv._vertexPositionsBuffer);
+        LoadData(mesh.Vertices, rv._vertexPositionsBuffer);
         LoadData(mesh.Normals, rv._vertexNormalsBuffer);
         LoadData(mesh.Tangents, rv._vertexTangentsBuffer);
         LoadData(mesh.BiTangents, rv._vertexBitangentsBuffer);

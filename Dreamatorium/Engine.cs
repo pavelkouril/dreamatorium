@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Assimp;
 using Dreamatorium.Assets;
 using Dreamatorium.Input;
 using Dreamatorium.Rendering;
@@ -8,14 +7,13 @@ using Dreamatorium.UI;
 using SharpMetal.Metal;
 using SharpMetal.ObjectiveCCore;
 using Camera = Dreamatorium.Scene.Camera;
-using Mesh = Dreamatorium.Rendering.Resources.Mesh;
 
 namespace Dreamatorium;
 
 public class Engine
 {
     private readonly Stopwatch _watch = new Stopwatch();
-    private readonly List<Mesh> _scene;
+    private readonly Rendering.Scene _scene;
 
     private readonly Camera _camera;
 
@@ -36,7 +34,7 @@ public class Engine
         var loader = new SponzaLoader();
         _scene = loader.LoadFromFile(assetLoader, "Data/sponza/sponza.obj", device);
 
-        var skyboxTexture = assetLoader.LoadTexture("Data/skybox_to_equirect_2.png", TextureType.None);
+        var skyboxTexture = assetLoader.LoadTexture("Data/skybox_to_equirect_2.png", Assimp.TextureType.None);
 
         _camera = new Camera(initialWidth / (float)initialHeight);
 

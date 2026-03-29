@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using Dreamatorium.Platforms.macOS;
 using SharpMetal.Foundation;
 using SharpMetal.Metal;
-using Resources_Mesh = Dreamatorium.Rendering.Resources.Mesh;
 
 namespace Dreamatorium.Rendering;
 
@@ -11,7 +10,7 @@ public class ShadowPass : IPass
 {
     private const ulong kShadowMapSize = 2048;
     private readonly RenderingPipeline _pipeline;
-    private readonly List<Resources_Mesh> _scene;
+    private readonly Scene _scene;
     private readonly MTL4RenderPassDescriptor _shadowPassDescriptor;
     private readonly MTLRenderPipelineState _shadowPipelineState;
     private readonly MTLDepthStencilState _shadowDepthStencilState;
@@ -21,7 +20,7 @@ public class ShadowPass : IPass
 
     public MTLTexture ShadowMap { get; private set; }
 
-    public ShadowPass(MTLDevice device, RenderingPipeline pipeline, List<Resources_Mesh> scene)
+    public ShadowPass(MTLDevice device, RenderingPipeline pipeline, Scene scene)
     {
         _pipeline = pipeline;
         _scene = scene;
@@ -143,7 +142,7 @@ public class ShadowPass : IPass
 
         _vertexArgs.SetAddress(frameDataBuffer.GpuAddress, 5);
 
-        foreach (var matGrouping in _scene.GroupBy(x => x.Material.Index))
+        foreach (var matGrouping in _scene.Meshes.GroupBy(x => x.Material.Index))
         {
             var material = matGrouping.First().Material;
             _fragmentArgs.SetTexture(material.Opacity.GpuResourceID, 0);

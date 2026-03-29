@@ -85,7 +85,7 @@ public class RenderingPipeline
 
     public IReadOnlyList<(string Key, string Label)> BufferVisualizationOptions => _bufferVisualizationOptions;
 
-    public RenderingPipeline(MTLDevice device, List<Mesh> scene, MTLTexture skyboxTexture, Camera camera, ulong initialWidth, ulong initialHeight)
+    public RenderingPipeline(MTLDevice device, Scene scene, MTLTexture skyboxTexture, Camera camera, ulong initialWidth, ulong initialHeight)
     {
         _device = device;
         _camera = camera;
@@ -323,9 +323,9 @@ public class RenderingPipeline
         _residencySet.Commit();
     }
 
-    private void RegisterSceneResidency(List<Mesh> scene)
+    private void RegisterSceneResidency(Scene scene)
     {
-        foreach (var mesh in scene)
+        foreach (var mesh in scene.Meshes)
         {
             TrackAllocation(mesh._vertexPositionsBuffer.NativePtr);
             TrackAllocation(mesh._vertexNormalsBuffer.NativePtr);

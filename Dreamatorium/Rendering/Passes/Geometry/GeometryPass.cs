@@ -4,14 +4,13 @@ using Dreamatorium.Platforms.macOS;
 using Dreamatorium.Scene;
 using SharpMetal.Foundation;
 using SharpMetal.Metal;
-using Resources_Mesh = Dreamatorium.Rendering.Resources.Mesh;
 
 namespace Dreamatorium.Rendering;
 
 public class GeometryPass : IPass<GeometryPassSettings>
 {
     private readonly RenderingPipeline _pipeline;
-    private readonly List<Resources_Mesh> _scene;
+    private readonly Scene _scene;
     private readonly Camera _camera;
     private MTLBuffer[] _frameData = new MTLBuffer[RenderingPipeline.kMaxFramesInFlight];
 
@@ -25,7 +24,7 @@ public class GeometryPass : IPass<GeometryPassSettings>
 
     public GeometryPassSettings Settings { get; } = new();
 
-    public GeometryPass(MTLDevice device, RenderingPipeline pipeline, List<Resources_Mesh> scene, Camera camera)
+    public GeometryPass(MTLDevice device, RenderingPipeline pipeline, Scene scene, Camera camera)
     {
         _pipeline = pipeline;
         _scene = scene;
@@ -122,7 +121,7 @@ public class GeometryPass : IPass<GeometryPassSettings>
 
         renderEncoder.PopDebugGroup();
 
-        foreach (var matGrouping in _scene.GroupBy(x => x.Material.Index))
+        foreach (var matGrouping in _scene.Meshes.GroupBy(x => x.Material.Index))
         {
             renderEncoder.PushDebugGroup(StringHelper.NSString($"Material {matGrouping.Key}"));
 
